@@ -1,0 +1,6 @@
+{
+  "name": "VideoPocket",
+  "description": "VideoPocket technical engine probe",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
