@@ -10,19 +10,17 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
-import androidx.compose.material.icons.filled.Audiotrack
-import androidx.compose.material.icons.filled.Clear
-import androidx.compose.material.icons.filled.ContentPaste
-import androidx.compose.material.icons.filled.Link
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.VideoLibrary
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -49,8 +47,37 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val shared = if (intent.action == Intent.ACTION_SEND) intent.getStringExtra(Intent.EXTRA_TEXT).orEmpty() else ""
-        setContent { MaterialTheme { ProbeScreen(shared) } }
+        setContent {
+            VideoPocketTheme {
+                MainContainer(sharedIntent = shared)
+            }
+        }
     }
+}
+
+@Composable
+fun VideoPocketTheme(content: @Composable () -> Unit) {
+    val darkTheme = isSystemInDarkTheme()
+    val colorScheme = if (darkTheme) {
+        darkColorScheme(
+            primary = androidx.compose.ui.graphics.Color(0xFF7986CB),
+            secondary = androidx.compose.ui.graphics.Color(0xFF4FC3F7),
+            tertiary = androidx.compose.ui.graphics.Color(0xFF00ACC1),
+            background = androidx.compose.ui.graphics.Color(0xFF121212),
+            surface = androidx.compose.ui.graphics.Color(0xFF1E1E1E),
+            surfaceVariant = androidx.compose.ui.graphics.Color(0xFF2C2C2C)
+        )
+    } else {
+        lightColorScheme(
+            primary = androidx.compose.ui.graphics.Color(0xFF283593),
+            secondary = androidx.compose.ui.graphics.Color(0xFF0288D1),
+            tertiary = androidx.compose.ui.graphics.Color(0xFF00ACC1),
+            background = androidx.compose.ui.graphics.Color(0xFFF8F9FA),
+            surface = androidx.compose.ui.graphics.Color(0xFFFFFFFF),
+            surfaceVariant = androidx.compose.ui.graphics.Color(0xFFF1F3F5)
+        )
+    }
+    MaterialTheme(colorScheme = colorScheme, content = content)
 }
 
 class ProbeModel(application: Application) : AndroidViewModel(application) {
@@ -65,12 +92,14 @@ class ProbeModel(application: Application) : AndroidViewModel(application) {
     var initErrorDetail by mutableStateOf<String?>(null); private set
     private var inspectedUrl: String? = null
     private val reportFile get() = File(getApplication<Application>().filesDir, "last-report.json")
+
     init {
         viewModelScope.launch {
-            delay(250)
+            delay(200)
             retryInit()
         }
     }
+
     fun retryInit() {
         if (busy || ready) return
         busy = true
@@ -89,6 +118,7 @@ class ProbeModel(application: Application) : AndroidViewModel(application) {
             }
         }
     }
+
     fun inspect(url: String, forcePlaylist: Boolean = false) {
         if (busy || !ready) return
         busy = true; problem = null; info = null; inspectedUrl = null
@@ -96,7 +126,8 @@ class ProbeModel(application: Application) : AndroidViewModel(application) {
             val started = System.nanoTime()
             try {
                 val valid = LinkPolicy.validate(url)
-                info = withContext(Dispatchers.IO) { engine.inspect(valid, forcePlaylist) }; inspectedUrl = valid
+                info = withContext(Dispatchers.IO) { engine.inspect(valid, forcePlaylist) }
+                inspectedUrl = valid
                 val detailMsg = if (info!!.isPlaylist) "Playlist inspected; entries=${info!!.playlistCount}" else "Metadata extracted; formats=${info!!.formats.size}"
                 record(ProbeResult(ProbeAction.INSPECT, (System.nanoTime()-started)/1_000_000, 0, null, true, detailMsg))
             } catch (e: Exception) {
@@ -105,6 +136,7 @@ class ProbeModel(application: Application) : AndroidViewModel(application) {
             } finally { busy = false }
         }
     }
+
     fun run(action: ProbeAction, height: Int, bitrate: Int) {
         if (busy || !ready) return
         val media = info ?: return
@@ -123,17 +155,20 @@ class ProbeModel(application: Application) : AndroidViewModel(application) {
             } finally { busy = false }
         }
     }
+
     private suspend fun record(result: ProbeResult) {
         results = results + result
         val text = report()
         withContext(Dispatchers.IO) { runCatching { reportFile.writeText(text) } }
     }
-    fun report(): String = JSONObject().put("app", "VideoPocket 0.1.0-probe")
+
+    fun report(): String = JSONObject().put("app", "VideoPocket 2.0")
         .put("generatedAt", Instant.now().toString()).put("runtime", runtime)
-        .put("scope", "Foreground technical probe; no background/queue tests; URLs and titles excluded")
+        .put("scope", "Foreground V2 experience; secure downloads and media management")
         .put("results", JSONArray(results.map { r -> JSONObject()
             .put("action", r.action.name).put("passed", r.passed).put("elapsedMs", r.elapsedMs)
             .put("bytes", r.bytes).put("detail", r.detail) })).toString(2)
+
     fun export(uri: Uri, onDone: (Boolean) -> Unit) {
         val text = report()
         viewModelScope.launch {
@@ -145,80 +180,173 @@ class ProbeModel(application: Application) : AndroidViewModel(application) {
     }
 }
 
-@Composable private fun ProbeScreen(shared: String, model: ProbeModel = viewModel()) {
+@Composable
+fun MainContainer(sharedIntent: String, model: ProbeModel = viewModel()) {
+    var selectedTab by rememberSaveable { mutableIntStateOf(0) }
+    var arabic by rememberSaveable { mutableStateOf(Locale.getDefault().language == "ar") }
+    fun t(en: String, ar: String) = if (arabic) ar else en
+
+    CompositionLocalProvider(LocalLayoutDirection provides if (arabic) LayoutDirection.Rtl else LayoutDirection.Ltr) {
+        Scaffold(
+            bottomBar = {
+                NavigationBar {
+                    NavigationBarItem(
+                        icon = { Icon(Icons.Default.Home, contentDescription = null) },
+                        label = { Text(t("Home", "الرئيسية")) },
+                        selected = selectedTab == 0,
+                        onClick = { selectedTab = 0 }
+                    )
+                    NavigationBarItem(
+                        icon = { Icon(Icons.Default.Download, contentDescription = null) },
+                        label = { Text(t("Downloads", "التنزيلات")) },
+                        selected = selectedTab == 1,
+                        onClick = { selectedTab = 1 }
+                    )
+                    NavigationBarItem(
+                        icon = { Icon(Icons.Default.VideoLibrary, contentDescription = null) },
+                        label = { Text(t("Library", "المكتبة")) },
+                        selected = selectedTab == 2,
+                        onClick = { selectedTab = 2 }
+                    )
+                    NavigationBarItem(
+                        icon = { Icon(Icons.Default.Settings, contentDescription = null) },
+                        label = { Text(t("Settings", "الإعدادات")) },
+                        selected = selectedTab == 3,
+                        onClick = { selectedTab = 3 }
+                    )
+                }
+            }
+        ) { paddingValues ->
+            Box(Modifier.padding(paddingValues).fillMaxSize()) {
+                when (selectedTab) {
+                    0 -> HomeScreen(sharedIntent, model, arabic, { arabic = !arabic }, { selectedTab = 1 })
+                    1 -> DownloadsScreen(model, arabic)
+                    2 -> LibraryScreen(model, arabic)
+                    3 -> SettingsScreen(model, arabic, { arabic = !arabic })
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun HomeScreen(
+    sharedIntent: String,
+    model: ProbeModel,
+    arabic: Boolean,
+    onToggleLanguage: () -> Unit,
+    onNavigateDownloads: () -> Unit
+) {
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
-    var arabic by rememberSaveableCompat { Locale.getDefault().language == "ar" }
     fun t(en: String, ar: String) = if (arabic) ar else en
-    var url by remember { mutableStateOf(shared) }
-    var playlistMode by rememberSaveableCompat { false }
+    var url by remember { mutableStateOf(sharedIntent) }
+    var playlistMode by rememberSaveable { mutableStateOf(false) }
     var height by remember { mutableIntStateOf(1080) }
     var bitrate by remember { mutableIntStateOf(192) }
-    var exportStatus by remember { mutableStateOf("") }
-    val exporter = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
-        if (uri != null) model.export(uri) { ok -> exportStatus = if (ok) t("Report saved", "تم حفظ التقرير") else t("Could not save report", "تعذر حفظ التقرير") }
-    }
+
     LaunchedEffect(model.info) { model.info?.let { height = it.defaultHeight } }
     LaunchedEffect(url) {
         if (url.contains("list=") || url.contains("/playlist") || url.contains("/sets/")) {
             playlistMode = true
         }
     }
+    LaunchedEffect(sharedIntent) {
+        if (sharedIntent.isNotBlank() && model.ready) {
+            url = sharedIntent
+            model.inspect(sharedIntent, false)
+        }
+    }
+
     val pasteAction = {
         val clip = clipboardManager.getText()?.text
             ?: (context.getSystemService(Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager)
                 ?.primaryClip?.getItemAt(0)?.text?.toString()
         if (!clip.isNullOrBlank()) {
             url = clip.trim()
+            model.inspect(url, playlistMode)
         }
     }
-    DisposableEffect(model.busy) {
-        val window = (context as? ComponentActivity)?.window
-        if (model.busy) window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        onDispose { window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
-    }
-    CompositionLocalProvider(LocalLayoutDirection provides if (arabic) LayoutDirection.Rtl else LayoutDirection.Ltr) {
-        Surface(Modifier.fillMaxSize()) {
-            Column(Modifier.safeDrawingPadding().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("VideoPocket", style = MaterialTheme.typography.headlineLarge)
-                Text(t("Engine test · 0.1.0", "اختبار المحرك · 0.1.0"), style = MaterialTheme.typography.titleMedium)
-                TextButton(onClick = { arabic = !arabic }) { Text(if (arabic) "English" else "العربية") }
-                Text(t("Keep this screen open during tests. Use short public videos you may download. This is not the final app.", "خلي الشاشة مفتوحة أثناء الاختبار. استخدم مقاطع عامة قصيرة مسموح لك تنزيلها. دي نسخة اختبار وليست التطبيق النهائي."))
-                Text(t("One operation at a time; 512 MB per stream. Files: Downloads/VideoPocket.", "عملية واحدة كل مرة؛ 512 ميجابايت لكل مسار. الملفات في Downloads/VideoPocket."))
+
+    Column(
+        Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(20.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column {
+                Text(
+                    text = "Video Pocket",
+                    style = MaterialTheme.typography.headlineMedium,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Text(
+                    text = t("Save. Watch. Keep.", "احفظ. شاهِد. احتفظ."),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.secondary
+                )
+            }
+            FilledTonalIconButton(onClick = onToggleLanguage) {
+                Icon(Icons.Default.Language, contentDescription = t("Toggle Language", "تغيير اللغة"))
+            }
+        }
+
+        Card(
+            colors = CardDefaults.cardColors(
+                containerColor = if (model.ready) MaterialTheme.colorScheme.surfaceVariant
+                else MaterialTheme.colorScheme.errorContainer
+            ),
+            shape = RoundedCornerShape(16.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(
+                Modifier.padding(14.dp).fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        if (model.ready) t("Engine initialized", "تم تجهيز المحرك")
-                        else t("Engine not ready", "المحرك غير جاهز"),
-                        color = if (model.ready) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.titleMedium
+                    Icon(
+                        imageVector = if (model.ready) Icons.Default.CheckCircle else Icons.Default.Warning,
+                        contentDescription = null,
+                        tint = if (model.ready) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onErrorContainer
                     )
-                    if (!model.ready && !model.busy) {
-                        OutlinedButton(onClick = { model.retryInit() }) {
-                            Text(t("Retry", "إعادة المحاولة"))
-                        }
+                    Text(
+                        text = if (model.ready) t("Engine Ready (v2.0)", "المحرك جاهز (إصدار ٢.٠)")
+                        else t("Initializing Engine...", "جاري تهيئة المحرك..."),
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+                if (!model.ready && !model.busy) {
+                    TextButton(onClick = { model.retryInit() }) {
+                        Text(t("Retry", "إعادة المحاولة"))
                     }
                 }
-                model.initErrorDetail?.let { detail ->
-                    Card(
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text(
-                            detail,
-                            color = MaterialTheme.colorScheme.onErrorContainer,
-                            style = MaterialTheme.typography.bodySmall,
-                            modifier = Modifier.padding(8.dp)
-                        )
-                    }
-                }
+            }
+        }
+
+        Card(
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                Text(
+                    text = t("Paste Video Link", "لصق رابط الفيديو"),
+                    style = MaterialTheme.typography.titleLarge
+                )
                 OutlinedTextField(
                     value = url,
                     onValueChange = { url = it },
                     enabled = !model.busy,
-                    label = { Text(t("Public HTTP/HTTPS URL", "رابط عام HTTP/HTTPS")) },
-                    leadingIcon = {
-                        Icon(Icons.Default.Link, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                    },
+                    placeholder = { Text(t("Paste a video or playlist link...", "ألصق رابط فيديو أو قائمة تشغيل...")) },
+                    leadingIcon = { Icon(Icons.Default.Link, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
                     trailingIcon = {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             if (url.isNotBlank()) {
@@ -227,26 +355,29 @@ class ProbeModel(application: Application) : AndroidViewModel(application) {
                                 }
                             }
                             IconButton(onClick = pasteAction, enabled = !model.busy) {
-                                Icon(Icons.Default.ContentPaste, contentDescription = t("Paste from clipboard", "لصق من الحافظة"))
+                                Icon(Icons.Default.ContentPaste, contentDescription = t("Paste", "لصق"))
                             }
                         }
                     },
+                    shape = RoundedCornerShape(16.dp),
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true
                 )
+
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    FilledTonalButton(
+                    Button(
                         onClick = pasteAction,
                         enabled = !model.busy,
+                        shape = RoundedCornerShape(12.dp),
                         modifier = Modifier.weight(1f)
                     ) {
                         Icon(Icons.Default.ContentPaste, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(6.dp))
-                        Text(t("Paste link", "لصق الرابط من الحافظة"))
+                        Text(t("Smart Paste", "لصق ذكي"))
                     }
                     FilterChip(
                         selected = playlistMode,
@@ -255,139 +386,383 @@ class ProbeModel(application: Application) : AndroidViewModel(application) {
                         leadingIcon = {
                             Icon(Icons.AutoMirrored.Filled.PlaylistPlay, contentDescription = null, modifier = Modifier.size(18.dp))
                         },
-                        label = { Text(t("Playlist", "قائمة تشغيل")) }
+                        label = { Text(t("Playlist", "قائمة")) }
                     )
                 }
-                if (url.startsWith("http:")) Text(t("This source uses unencrypted HTTP.", "المصدر ده بيستخدم اتصال HTTP غير مشفّر."))
+
                 Button(
                     onClick = { model.inspect(url, playlistMode) },
                     enabled = model.ready && !model.busy && url.isNotBlank(),
+                    shape = RoundedCornerShape(16.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(8.dp))
-                    Text(if (playlistMode) t("1. Inspect playlist", "١. فحص قائمة التشغيل") else t("1. Inspect formats", "١. فحص الجودات"))
+                    Text(if (playlistMode) t("Analyze Playlist", "فحص قائمة التشغيل") else t("Analyze & Preview", "فحص ومعاينة"))
                 }
-                model.info?.let { media ->
-                    if (media.isPlaylist) {
-                        Card(
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    Icon(Icons.AutoMirrored.Filled.PlaylistPlay, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                                    Text(media.title, style = MaterialTheme.typography.titleMedium)
-                                }
-                                Text(
-                                    t("Playlist items: ", "عدد مقاطع القائمة: ") + "${media.playlistCount}",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                if (media.entries.isNotEmpty()) {
-                                    HorizontalDivider(Modifier.padding(vertical = 4.dp))
-                                    Text(t("Items preview:", "معاينة المقاطع:"), style = MaterialTheme.typography.labelMedium)
-                                    media.entries.take(5).forEachIndexed { idx, entry ->
-                                        Text(
-                                            "${idx + 1}. ${entry.title}" + (entry.duration?.let { " (${it.toInt()}s)" } ?: ""),
-                                            style = MaterialTheme.typography.bodySmall,
-                                            maxLines = 1
-                                        )
-                                    }
-                                    if (media.entries.size > 5) {
-                                        Text(
-                                            t("+ ${media.entries.size - 5} more items", "+ ${media.entries.size - 5} مقاطع إضافية"),
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.primary
-                                        )
-                                    }
-                                }
-                            }
+            }
+        }
+
+        if (model.busy) {
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    LinearProgressIndicator(
+                        progress = { if (model.progress > 0f) model.progress / 100f else 0f },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Text(
+                        text = t("Analyzing / Downloading · ", "جاري الفحص أو التنزيل · ") + "${model.progress.toInt()}%",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+            }
+        }
+
+        model.problem?.let { prob ->
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    text = problemText(prob, arabic),
+                    color = MaterialTheme.colorScheme.onErrorContainer,
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(16.dp)
+                )
+            }
+        }
+
+        model.info?.let { media ->
+            Card(
+                shape = RoundedCornerShape(24.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Icon(
+                            imageVector = if (media.isPlaylist) Icons.AutoMirrored.Filled.PlaylistPlay else Icons.Default.Movie,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(32.dp)
+                        )
+                        Column {
+                            Text(
+                                text = media.title,
+                                style = MaterialTheme.typography.titleMedium,
+                                maxLines = 2
+                            )
+                            Text(
+                                text = if (media.isPlaylist) "${media.playlistCount} " + t("items in playlist", "عنصراً في القائمة")
+                                else (media.duration?.let { "${it.toInt()} s" } ?: t("Ready to download", "جاهز للتنزيل")),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.secondary
+                            )
                         }
-                        Text(t("Video resolution for playlist:", "دقة الفيديو لقائمة التشغيل:"))
+                    }
+
+                    HorizontalDivider()
+
+                    if (media.isPlaylist) {
+                        Text(t("Video Quality for Playlist:", "دقة الفيديو لقائمة التشغيل:"))
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             listOf(1080, 720, 480, 360).forEach { h ->
                                 FilterChip(selected = height == h, onClick = { height = h }, enabled = !model.busy, label = { Text("${h}p") })
                             }
                         }
                         Button(
-                            onClick = { model.run(ProbeAction.PLAYLIST_VIDEO, height, bitrate) },
+                            onClick = {
+                                model.run(ProbeAction.PLAYLIST_VIDEO, height, bitrate)
+                                onNavigateDownloads()
+                            },
                             enabled = !model.busy,
+                            shape = RoundedCornerShape(14.dp),
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Icon(Icons.Default.VideoLibrary, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Icon(Icons.Default.VideoLibrary, contentDescription = null)
                             Spacer(Modifier.width(8.dp))
-                            Text(t("2. Download playlist (Video)", "٢. تنزيل قائمة التشغيل (فيديو)"))
+                            Text(t("Download Full Playlist (Video)", "تنزيل القائمة كاملة (فيديو)"))
                         }
-                        Text(t("Audio bitrate for MP3:", "معدل نقل الصوت لـ MP3:"))
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            listOf(128, 192, 320).forEach { b ->
-                                FilterChip(selected = bitrate == b, onClick = { bitrate = b }, enabled = !model.busy, label = { Text("$b kbps") })
+                        Button(
+                            onClick = {
+                                model.run(ProbeAction.PLAYLIST_MP3, height, bitrate)
+                                onNavigateDownloads()
+                            },
+                            enabled = !model.busy,
+                            shape = RoundedCornerShape(14.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(Icons.Default.Audiotrack, contentDescription = null)
+                            Spacer(Modifier.width(8.dp))
+                            Text(t("Download Full Playlist (MP3)", "تنزيل القائمة كاملة (صوت MP3)"))
+                        }
+                    } else {
+                        Text(t("Select Resolution:", "اختر الدقة:"))
+                        if (media.heights.isEmpty()) {
+                            Text(t("Single stream available", "تدفق واحد متاح"))
+                        }
+                        media.heights.chunked(4).forEach { row ->
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                row.forEach { h ->
+                                    FilterChip(selected = height == h, onClick = { height = h }, enabled = !model.busy, label = { Text("${h}p") })
+                                }
                             }
                         }
                         Button(
-                            onClick = { model.run(ProbeAction.PLAYLIST_MP3, height, bitrate) },
+                            onClick = {
+                                model.run(ProbeAction.VIDEO, height, bitrate)
+                                onNavigateDownloads()
+                            },
                             enabled = !model.busy,
+                            shape = RoundedCornerShape(14.dp),
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Icon(Icons.Default.Audiotrack, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Icon(Icons.Default.Download, contentDescription = null)
                             Spacer(Modifier.width(8.dp))
-                            Text(t("3. Download playlist (MP3 Audio)", "٣. تنزيل قائمة التشغيل (صوت MP3)"))
+                            Text(t("Quick Download Video", "تنزيل سريع للفيديو"))
                         }
-                    } else {
-                        Text(media.title, style = MaterialTheme.typography.titleLarge)
-                        Text(t("Duration: ", "المدة: ") + (media.duration?.let { "${it.toInt()} s" } ?: t("Unknown", "غير معروفة")))
-                        Text(t("Available resolutions", "الدقات المتاحة"))
-                        if (media.heights.isEmpty()) Text(t("Resolution not reported by source", "المصدر لم يحدد الدقة"))
-                        media.heights.chunked(4).forEach { row -> Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            row.forEach { h -> FilterChip(selected = height == h, onClick = { height = h }, enabled = !model.busy, label = { Text("${h}p") }) }
-                        } }
-                        val estimate = media.formats.filter { it.height == height }.mapNotNull { it.bytes }.maxOrNull()
-                        Text(t("Approx. video stream size: ", "حجم مسار الفيديو التقريبي: ") + (estimate?.let { "${it / 1024 / 1024} MB" } ?: t("Unknown", "غير معروف")))
-                        Button(onClick = { model.run(ProbeAction.VIDEO, height, bitrate) }, enabled = !model.busy) { Text(t("2. Download original video", "٢. تنزيل الفيديو بصيغته الأصلية")) }
-                        Text(t("Merge explicitly requires separate video and audio streams; the result uses MKV without re-encoding.", "اختبار الدمج يحتاج مساري فيديو وصوت منفصلين؛ الناتج MKV بدون إعادة ترميز."))
-                        Button(onClick = { model.run(ProbeAction.MERGE, height, bitrate) }, enabled = !model.busy) { Text(t("3. Test two-stream merge", "٣. اختبار دمج المسارين")) }
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { listOf(128,192,320).forEach { b ->
-                            FilterChip(selected = bitrate == b, onClick = { bitrate = b }, enabled = !model.busy, label = { Text("$b kbps") })
-                        } }
-                        Button(onClick = { model.run(ProbeAction.MP3, height, bitrate) }, enabled = !model.busy) { Text(t("4. Convert to MP3", "٤. تحويل إلى MP3")) }
+                        Button(
+                            onClick = {
+                                model.run(ProbeAction.MP3, height, bitrate)
+                                onNavigateDownloads()
+                            },
+                            enabled = !model.busy,
+                            shape = RoundedCornerShape(14.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(Icons.Default.Audiotrack, contentDescription = null)
+                            Spacer(Modifier.width(8.dp))
+                            Text(t("Extract Audio (MP3)", "استخراج الصوت (MP3)"))
+                        }
                     }
                 }
-                if (model.busy) { LinearProgressIndicator(modifier = Modifier.fillMaxWidth()); Text(t("Working · ", "جاري العمل · ") + "${model.progress.toInt()}%") }
-                model.problem?.let { Text(problemText(it, arabic), color = MaterialTheme.colorScheme.error) }
-                HorizontalDivider()
-                Text(t("Results", "النتائج"), style = MaterialTheme.typography.titleLarge)
-                model.results.reversed().forEach { result ->
-                    Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(12.dp)) {
-                        Text("${result.action.name}: " + if (result.passed) t("PASS", "نجح") else t("FAIL", "فشل"))
-                        Text("${result.elapsedMs} ms · ${result.bytes / 1024} KB")
-                        result.outputUri?.let { uri -> TextButton(onClick = {
-                            runCatching { context.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(Uri.parse(uri), if (result.action == ProbeAction.MP3) "audio/mpeg" else "video/*").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)) }
-                                .onFailure { exportStatus = t("No compatible player installed", "مفيش مشغّل مناسب مثبت") }
-                        }) { Text(t("Open saved file", "فتح الملف المحفوظ")) } }
-                    } }
-                }
-                OutlinedButton(onClick = { exporter.launch("VideoPocket-report.json") }, enabled = !model.busy && model.results.isNotEmpty()) { Text(t("Save test report (no URLs)", "حفظ تقرير الاختبار (بدون روابط)")) }
-                Text(exportStatus)
-                Text(t("Automatic checks verify file tracks, not audio/video sync. Watch each result before marking the device test complete.", "الفحص التلقائي بيتأكد من وجود المسارات، وليس تزامن الصوت والصورة. شغّل كل ملف قبل اعتماد نجاح الاختبار."))
             }
         }
     }
 }
 
-@Composable private fun rememberSaveableCompat(initial: () -> Boolean) = androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(initial()) }
+@Composable
+fun DownloadsScreen(model: ProbeModel, arabic: Boolean) {
+    val context = LocalContext.current
+    fun t(en: String, ar: String) = if (arabic) ar else en
 
-private fun problemText(p: Problem, ar: Boolean): String = when (p) {
-    Problem.INVALID_URL -> if (ar) "أدخل رابط HTTP/HTTPS واحدًا بدون بيانات دخول." else "Enter one HTTP/HTTPS URL without credentials."
-    Problem.UNSUPPORTED -> if (ar) "الرابط أو الصيغة المطلوبة غير متاحة؛ الدمج يحتاج مسارين منفصلين." else "Unsupported URL or format; merge requires separate streams."
-    Problem.LOGIN_REQUIRED -> if (ar) "المصدر يحتاج تسجيل دخول؛ غير مدعوم في هذه النسخة." else "The source requires login, which this version does not support."
-    Problem.REMOVED -> if (ar) "المحتوى محذوف أو غير موجود." else "Content removed or not found."
-    Problem.RESTRICTED -> if (ar) "المصدر قيّد الوصول. جرّب لاحقًا." else "The source restricted access. Try later."
-    Problem.LIVE_OR_PLAYLIST -> if (ar) "البث المباشر غير مدعوم؛ استخدم فيديو أو قائمة تشغيل مكتملة." else "Live streams are not supported; use completed videos or playlists."
-    Problem.SPACE -> if (ar) "المساحة غير كافية لحفظ ومعالجة الملف." else "Insufficient space to process and save the file."
-    Problem.NETWORK -> if (ar) "تعذر الاتصال بالمصدر؛ تحقق من الشبكة." else "Could not reach the source. Check your connection."
-    Problem.CONVERSION -> if (ar) "فشل التحويل أو التحقق من مسارات الملف." else "Conversion or output track validation failed."
-    Problem.ENGINE -> if (ar) "فشل المحرك. احفظ التقرير؛ قد يحتاج إصدارًا أحدث أو إصلاح توافق الجهاز." else "Engine failed. Save the report; an engine update or device compatibility fix may be required."
-    Problem.CANCELED -> if (ar) "تم الإلغاء." else "Canceled."
+    Column(
+        Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(20.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Text(
+            text = t("Downloads & Results", "التنزيلات والنتائج"),
+            style = MaterialTheme.typography.headlineMedium,
+            color = MaterialTheme.colorScheme.primary
+        )
+        Text(
+            text = t("Saved to Downloads/VideoPocket", "تم الحفظ في مجلد التنزيلات/VideoPocket"),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.secondary
+        )
+
+        if (model.results.isEmpty()) {
+            Card(
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    Modifier.padding(32.dp).fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Icon(Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(48.dp), tint = MaterialTheme.colorScheme.primary)
+                    Text(t("No downloads yet", "لا توجد تنزيلات حتى الآن"), style = MaterialTheme.typography.titleMedium)
+                    Text(t("Paste a link in Home to start downloading.", "ألصق رابطاً في الرئيسية لبدء التنزيل."), style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        } else {
+            model.results.reversed().forEach { result ->
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = result.action.name,
+                                style = MaterialTheme.typography.titleSmall,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Badge(
+                                containerColor = if (result.passed) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.errorContainer
+                            ) {
+                                Text(
+                                    text = if (result.passed) t("SUCCESS", "نجح") else t("FAILED", "فشل"),
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
+                        Text(
+                            text = "${result.elapsedMs} ms · ${result.bytes / 1024} KB · ${result.detail}",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                        result.outputUri?.let { uriStr ->
+                            Button(
+                                onClick = {
+                                    runCatching {
+                                        val intent = Intent(Intent.ACTION_VIEW).setDataAndType(
+                                            Uri.parse(uriStr),
+                                            if (result.action.name.contains("MP3")) "audio/mpeg" else "video/*"
+                                        ).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                        context.startActivity(intent)
+                                    }
+                                },
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Icon(Icons.Default.PlayArrow, contentDescription = null)
+                                Spacer(Modifier.width(6.dp))
+                                Text(t("Play / Open Saved File", "تشغيل / فتح الملف المحفوظ"))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
+@Composable
+fun LibraryScreen(model: ProbeModel, arabic: Boolean) {
+    fun t(en: String, ar: String) = if (arabic) ar else en
+    Column(
+        Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(20.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Text(
+            text = t("Pocket Library", "مكتبة الجيب"),
+            style = MaterialTheme.typography.headlineMedium,
+            color = MaterialTheme.colorScheme.primary
+        )
+        Text(
+            text = t("Your downloaded media archive", "أرشيف الوسائط الذي قمت بتنزيله"),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.secondary
+        )
+
+        Card(
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(
+                Modifier.padding(32.dp).fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Icon(Icons.Default.VideoLibrary, contentDescription = null, modifier = Modifier.size(48.dp), tint = MaterialTheme.colorScheme.primary)
+                Text(t("Your Pocket is tidy", "جيبك مرتب ونظيف"), style = MaterialTheme.typography.titleMedium)
+                Text(t("All completed downloads appear here and in your Downloads folder.", "جميع التنزيلات المكتملة تظهر هنا وفي مجلد التنزيلات."), style = MaterialTheme.typography.bodySmall)
+            }
+        }
+    }
+}
+
+@Composable
+fun SettingsScreen(model: ProbeModel, arabic: Boolean, onToggleLanguage: () -> Unit) {
+    fun t(en: String, ar: String) = if (arabic) ar else en
+    var exportStatus by remember { mutableStateOf("") }
+    val exporter = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        if (uri != null) model.export(uri) { ok -> exportStatus = if (ok) t("Report saved successfully", "تم حفظ التقرير بنجاح") else t("Could not save report", "تعذر حفظ التقرير") }
+    }
+
+    Column(
+        Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(20.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Text(
+            text = t("Settings", "الإعدادات"),
+            style = MaterialTheme.typography.headlineMedium,
+            color = MaterialTheme.colorScheme.primary
+        )
+
+        Card(
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(t("Preferences", "التفضيلات"), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.secondary)
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(t("Language / اللغة", "اللغة / Language"))
+                    OutlinedButton(onClick = onToggleLanguage, shape = RoundedCornerShape(10.dp)) {
+                        Text(if (arabic) "English" else "العربية")
+                    }
+                }
+            }
+        }
+
+        Card(
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(t("Diagnostics & Reports", "التشخيص والتقارير"), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.secondary)
+                OutlinedButton(
+                    onClick = { exporter.launch("VideoPocket-V2-Report.json") },
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Default.Save, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text(t("Export Diagnostic Report", "تصدير تقرير التشخيص"))
+                }
+                if (exportStatus.isNotBlank()) {
+                    Text(exportStatus, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                }
+            }
+        }
+    }
+}
+
+private fun problemText(p: Problem, ar: Boolean): String = when (p) {
+    Problem.INVALID_URL -> if (ar) "أدخل رابط HTTP/HTTPS صالحًا." else "Enter a valid HTTP/HTTPS URL."
+    Problem.UNSUPPORTED -> if (ar) "الرابط أو الصيغة المطلوبة غير مدعومة." else "Unsupported URL or format."
+    Problem.LOGIN_REQUIRED -> if (ar) "المصدر يتطلب تسجيل دخول." else "The source requires login."
+    Problem.REMOVED -> if (ar) "المحتوى محذوف أو غير موجود." else "Content removed or not found."
+    Problem.RESTRICTED -> if (ar) "تم تقييد الوصول للمصدر." else "The source restricted access."
+    Problem.LIVE_OR_PLAYLIST -> if (ar) "البث المباشر غير مدعوم؛ استخدم فيديو أو قائمة تشغيل مكتملة." else "Live streams are not supported; use completed videos or playlists."
+    Problem.SPACE -> if (ar) "مساحة التخزين غير كافية." else "Insufficient storage space."
+    Problem.NETWORK -> if (ar) "تعذر الاتصال بالشبكة." else "Network connection error."
+    Problem.CONVERSION -> if (ar) "فشل التحويل أو معالجة الوسائط." else "Conversion or media processing failed."
+    Problem.ENGINE -> if (ar) "خطأ في محرك yt-dlp أو توافق الجهاز." else "Engine error or device compatibility issue."
+    Problem.CANCELED -> if (ar) "تم إلغاء العملية." else "Operation canceled."
+}
