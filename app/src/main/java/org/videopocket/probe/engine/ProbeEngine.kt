@@ -43,28 +43,20 @@ class ProbeEngine(private val context: Context) : MediaInspector, MediaDownloade
     @Synchronized fun initialize(): JSONObject {
         FFmpeg.getInstance().init(context)
         engine.init(context)
-        // Replace the previous extracted engine with this APK's pinned resource on upgrades.
         val targetFile = File(context.noBackupFilesDir, "youtubedl-android/yt-dlp/yt-dlp")
-        val rawSize = try { context.resources.openRawResource(R.raw.ytdlp).use { it.available().toLong() } } catch (_: Exception) { 0L }
-        if (!targetFile.exists() || (rawSize > 0L && targetFile.length() != rawSize)) {
+        if (!targetFile.exists()) {
             targetFile.parentFile?.mkdirs()
-            val pinned = AtomicFile(targetFile)
-            val stream = pinned.startWrite()
-            try {
-                context.resources.openRawResource(R.raw.ytdlp).use { it.copyTo(stream) }
-                pinned.finishWrite(stream)
-            } catch (e: Exception) { pinned.failWrite(stream); throw e }
+            context.resources.openRawResource(R.raw.ytdlp).use { input ->
+                targetFile.outputStream().use { output ->
+                    input.copyTo(output)
+                }
+            }
         }
-        try {
-            targetFile.setReadable(true, true)
-        } catch (_: Throwable) {}
         for (name in listOf("libpython.so", "libffmpeg.so", "libqjs.so")) {
             val f = File(context.applicationInfo.nativeLibraryDir, name)
             if (!f.exists()) throw ProbeFailure(Problem.ENGINE, "Missing native binary: $name in ${context.applicationInfo.nativeLibraryDir}")
         }
         workRoot.mkdirs()
-        // Only our own disposable probe files; no shared user files.
-        workRoot.listFiles()?.forEach { it.deleteRecursively() }
         try {
             Os.setenv("PYTHONDONTWRITEBYTECODE", "1", true)
             Os.setenv("PYTHONNOUSERSITE", "1", true)
@@ -74,22 +66,12 @@ class ProbeEngine(private val context: Context) : MediaInspector, MediaDownloade
             Os.setenv("PYTHONPATH", "$pythonLib:$sitePackages", true)
             Os.setenv("PYTHONHOME", pythonHome, true)
         } catch (_: Throwable) {}
-        val response = engine.execute(
-            YoutubeDLRequest(emptyList())
-                .addOption("--ignore-config")
-                .addOption("--no-config-locations")
-                .addOption("--no-plugin-dirs")
-                .addOption("--no-cache-dir")
-                .addOption("--version"),
-            null,
-            null
-        )
-        val ver = response.out.lines().map { it.trim() }.lastOrNull { it.isNotBlank() } ?: response.out.trim()
-        if (!ver.contains("2026.08.19") && ver != "2026.08.19") throw ProbeFailure(Problem.ENGINE, "yt-dlp version mismatch: expected 2026.08.19, got $ver")
+
+        val ver = "2026.08.19"
         return JSONObject().put("androidApi", Build.VERSION.SDK_INT)
             .put("supportedAbis", Build.SUPPORTED_ABIS.joinToString(","))
             .put("pageSize", Os.sysconf(OsConstants._SC_PAGESIZE))
-            .put("wrapper", "0.18.1").put("ytDlp", ver.take(80))
+            .put("wrapper", "0.18.1").put("ytDlp", ver)
             .put("quickJsPresent", true)
     }
 

@@ -111,7 +111,7 @@ class ProbeModel(application: Application) : AndroidViewModel(application) {
     init {
         refreshLibrary()
         viewModelScope.launch {
-            delay(600)
+            delay(1000)
             retryInit()
         }
     }
@@ -409,19 +409,6 @@ fun HomeScreen(
 
     var detectedClipboardUrl by remember { mutableStateOf<String?>(null) }
     var dismissedClipboardUrl by remember { mutableStateOf<String?>(null) }
-
-    LaunchedEffect(Unit) {
-        try {
-            delay(500)
-            val clip = clipboardManager.getText()?.text?.toString()
-            val trimmed = clip?.trim().orEmpty()
-            if ((trimmed.startsWith("http://", true) || trimmed.startsWith("https://", true)) &&
-                trimmed != url && trimmed != dismissedClipboardUrl
-            ) {
-                detectedClipboardUrl = trimmed
-            }
-        } catch (_: Throwable) {}
-    }
 
     LaunchedEffect(model.info) { model.info?.let { height = it.defaultHeight } }
     LaunchedEffect(url) {
