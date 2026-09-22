@@ -111,7 +111,7 @@ class ProbeModel(application: Application) : AndroidViewModel(application) {
     init {
         refreshLibrary()
         viewModelScope.launch {
-            delay(200)
+            delay(600)
             retryInit()
         }
     }
@@ -411,15 +411,16 @@ fun HomeScreen(
     var dismissedClipboardUrl by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) {
-        val clip = clipboardManager.getText()?.text
-            ?: (context.getSystemService(Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager)
-                ?.primaryClip?.getItemAt(0)?.text?.toString()
-        val trimmed = clip?.trim().orEmpty()
-        if ((trimmed.startsWith("http://", true) || trimmed.startsWith("https://", true)) &&
-            trimmed != url && trimmed != dismissedClipboardUrl
-        ) {
-            detectedClipboardUrl = trimmed
-        }
+        try {
+            delay(500)
+            val clip = clipboardManager.getText()?.text?.toString()
+            val trimmed = clip?.trim().orEmpty()
+            if ((trimmed.startsWith("http://", true) || trimmed.startsWith("https://", true)) &&
+                trimmed != url && trimmed != dismissedClipboardUrl
+            ) {
+                detectedClipboardUrl = trimmed
+            }
+        } catch (_: Throwable) {}
     }
 
     LaunchedEffect(model.info) { model.info?.let { height = it.defaultHeight } }
@@ -436,13 +437,13 @@ fun HomeScreen(
     }
 
     val pasteAction = {
-        val clip = clipboardManager.getText()?.text
-            ?: (context.getSystemService(Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager)
-                ?.primaryClip?.getItemAt(0)?.text?.toString()
-        if (!clip.isNullOrBlank()) {
-            url = clip.trim()
-            model.inspect(url, playlistMode)
-        }
+        try {
+            val clip = clipboardManager.getText()?.text?.toString()
+            if (!clip.isNullOrBlank()) {
+                url = clip.trim()
+                model.inspect(url, playlistMode)
+            }
+        } catch (_: Throwable) {}
     }
 
     val triggerDownloadWithDuplicateCheck: (() -> Unit) -> Unit = { action ->

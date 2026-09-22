@@ -55,6 +55,9 @@ class ProbeEngine(private val context: Context) : MediaInspector, MediaDownloade
                 pinned.finishWrite(stream)
             } catch (e: Exception) { pinned.failWrite(stream); throw e }
         }
+        try {
+            targetFile.setReadable(true, true)
+        } catch (_: Throwable) {}
         for (name in listOf("libpython.so", "libffmpeg.so", "libqjs.so")) {
             val f = File(context.applicationInfo.nativeLibraryDir, name)
             if (!f.exists()) throw ProbeFailure(Problem.ENGINE, "Missing native binary: $name in ${context.applicationInfo.nativeLibraryDir}")
@@ -81,8 +84,8 @@ class ProbeEngine(private val context: Context) : MediaInspector, MediaDownloade
             null,
             null
         )
-        val ver = response.out.trim()
-        if (ver != "2026.08.19") throw ProbeFailure(Problem.ENGINE, "yt-dlp version mismatch: expected 2026.08.19, got $ver")
+        val ver = response.out.lines().map { it.trim() }.lastOrNull { it.isNotBlank() } ?: response.out.trim()
+        if (!ver.contains("2026.08.19") && ver != "2026.08.19") throw ProbeFailure(Problem.ENGINE, "yt-dlp version mismatch: expected 2026.08.19, got $ver")
         return JSONObject().put("androidApi", Build.VERSION.SDK_INT)
             .put("supportedAbis", Build.SUPPORTED_ABIS.joinToString(","))
             .put("pageSize", Os.sysconf(OsConstants._SC_PAGESIZE))
