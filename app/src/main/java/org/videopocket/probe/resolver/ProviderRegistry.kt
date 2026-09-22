@@ -25,6 +25,8 @@ object ProviderRegistry {
 
     fun getSupportedProviders(): List<MediaProvider> = providers
 
+    fun getGenericProvider(): GenericProvider = genericProvider
+
     fun findProvider(url: String): MediaProvider {
         val cleanUrl = url.trim()
         val specific = providers.filter { it.id != "generic" }.firstOrNull { it.canHandle(cleanUrl) }
@@ -48,9 +50,15 @@ object ProviderRegistry {
         val result = try {
             provider.resolve(cleanUrl, engine)
         } catch (t: Throwable) {
+            val msg = t.message.orEmpty().lowercase()
+            val errType = if ("sign in" in msg || "login" in msg || "log in" in msg) {
+                ResolverErrorType.LOGIN_REQUIRED
+            } else {
+                ResolverErrorType.PROCESSING_FAILED
+            }
             MediaResolverResult.Failure(
                 ResolverError(
-                    ResolverErrorType.PROCESSING_FAILED,
+                    errType,
                     "Provider '${provider.name}' error: ${t.message ?: t.javaClass.simpleName}"
                 )
             )
@@ -59,11 +67,33 @@ object ProviderRegistry {
 
         when (result) {
             is MediaResolverResult.Success -> {
-                ProviderHealthManager.recordSuccess(provider.id, latency)
+                ProviderHealthManager.recordSuccess(
+                    providerId = provider.id,
+                    latencyMs = latency,
+                    strategy = result.metadata.resolutionStrategy
+                )
+                return result
             }
             is MediaResolverResult.Failure -> {
+                // Intercept LOGIN_REQUIRED / PRIVATE_MEDIA for Smart Public Resolution
+                if (result.error.type == ResolverErrorType.LOGIN_REQUIRED || result.error.type == ResolverErrorType.PRIVATE_MEDIA) {
+                    val smartResult = SmartPublicResolver.resolvePublicFallback(cleanUrl, provider, engine)
+                    if (smartResult is MediaResolverResult.Success) {
+                        ProviderHealthManager.recordSuccess(
+                            providerId = provider.id,
+                            latencyMs = System.currentTimeMillis() - started,
+                            strategy = smartResult.metadata.resolutionStrategy,
+                            preventedLoginRequired = true
+                        )
+                        return smartResult
+                    } else if (smartResult is MediaResolverResult.Failure) {
+                        ProviderHealthManager.recordFailure(provider.id, smartResult.error.type)
+                        return smartResult
+                    }
+                }
+
+                // If specific provider failed with another non-login error, attempt GenericProvider fallback
                 ProviderHealthManager.recordFailure(provider.id, result.error.type)
-                // If specific provider failed with UNSUPPORTED or PROVIDER_CHANGED, attempt GenericProvider fallback
                 if (provider.id != "generic" && FeatureFlagsManager.isProviderEnabled("generic")) {
                     val fallbackResult = try {
                         genericProvider.resolve(cleanUrl, engine)
@@ -76,8 +106,18 @@ object ProviderRegistry {
                         )
                     }
                     if (fallbackResult is MediaResolverResult.Success) {
-                        ProviderHealthManager.recordSuccess("generic", System.currentTimeMillis() - started)
-                        return fallbackResult
+                        ProviderHealthManager.recordSuccess(
+                            providerId = "generic",
+                            latencyMs = System.currentTimeMillis() - started,
+                            strategy = ResolutionStrategy.GENERIC_FALLBACK
+                        )
+                        return MediaResolverResult.Success(
+                            fallbackResult.metadata.copy(
+                                resolutionStrategy = ResolutionStrategy.GENERIC_FALLBACK,
+                                classification = ResolutionClassification.PUBLIC_RESOLVED,
+                                resolvedViaSmartPublicResolution = true
+                            )
+                        )
                     }
                 }
             }

@@ -69,18 +69,25 @@ abstract class BaseMediaProvider : MediaProvider {
             MediaResolverResult.Success(metadata)
         } catch (e: Exception) {
             val problem = ProbeEngine.classify(e)
+            val msg = e.message.orEmpty().lowercase()
             val errType = when (problem) {
                 Problem.INVALID_URL -> ResolverErrorType.INVALID_URL
-                Problem.UNSUPPORTED -> ResolverErrorType.UNSUPPORTED_SOURCE
-                Problem.LOGIN_REQUIRED -> ResolverErrorType.PRIVATE_MEDIA
+                Problem.UNSUPPORTED -> {
+                    if ("drm" in msg || "widevine" in msg) ResolverErrorType.DRM_PROTECTED
+                    else ResolverErrorType.UNSUPPORTED_SOURCE
+                }
+                Problem.LOGIN_REQUIRED -> ResolverErrorType.LOGIN_REQUIRED
                 Problem.REMOVED -> ResolverErrorType.MEDIA_NOT_FOUND
-                Problem.RESTRICTED -> ResolverErrorType.RATE_LIMITED
+                Problem.RESTRICTED -> {
+                    if ("geo" in msg || "country" in msg || "region" in msg) ResolverErrorType.GEO_RESTRICTED
+                    else ResolverErrorType.RATE_LIMITED
+                }
                 Problem.NETWORK -> ResolverErrorType.NETWORK_ERROR
                 Problem.SPACE -> ResolverErrorType.INSUFFICIENT_STORAGE
                 Problem.ENGINE -> {
-                    val msg = e.message.orEmpty().lowercase()
-                    if ("429" in msg || "rate limit" in msg || "too many requests" in msg) ResolverErrorType.RATE_LIMITED
-                    else if ("format" in msg || "extractor" in msg) ResolverErrorType.PROVIDER_CHANGED
+                    if ("sign in" in msg || "login" in msg || "log in" in msg || "private" in msg) ResolverErrorType.LOGIN_REQUIRED
+                    else if ("429" in msg || "rate limit" in msg || "too many requests" in msg) ResolverErrorType.RATE_LIMITED
+                    else if ("format" in msg || "extractor" in msg) ResolverErrorType.EXTRACTOR_OUTDATED
                     else ResolverErrorType.PROCESSING_FAILED
                 }
                 else -> ResolverErrorType.UNKNOWN

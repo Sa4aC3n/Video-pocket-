@@ -24,6 +24,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
@@ -192,9 +193,10 @@ class ProbeModel(application: Application) : AndroidViewModel(application) {
                         problem = when (resolveRes.error.type) {
                             ResolverErrorType.INVALID_URL -> Problem.INVALID_URL
                             ResolverErrorType.UNSUPPORTED_SOURCE -> Problem.UNSUPPORTED
-                            ResolverErrorType.MEDIA_NOT_FOUND -> Problem.REMOVED
-                            ResolverErrorType.PRIVATE_MEDIA -> Problem.LOGIN_REQUIRED
-                            ResolverErrorType.RATE_LIMITED -> Problem.RESTRICTED
+                            ResolverErrorType.MEDIA_NOT_FOUND, ResolverErrorType.PUBLIC_MEDIA_UNAVAILABLE -> Problem.REMOVED
+                            ResolverErrorType.PRIVATE_MEDIA, ResolverErrorType.LOGIN_REQUIRED -> Problem.LOGIN_REQUIRED
+                            ResolverErrorType.GEO_RESTRICTED, ResolverErrorType.RATE_LIMITED -> Problem.RESTRICTED
+                            ResolverErrorType.DRM_PROTECTED -> Problem.UNSUPPORTED
                             ResolverErrorType.NETWORK_ERROR -> Problem.NETWORK
                             ResolverErrorType.INSUFFICIENT_STORAGE -> Problem.SPACE
                             else -> Problem.ENGINE
@@ -704,12 +706,26 @@ fun HomeScreen(
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text(
-                    text = problemText(prob, arabic),
-                    color = MaterialTheme.colorScheme.onErrorContainer,
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.padding(16.dp)
-                )
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    val titleText = model.resolverError?.classification?.let {
+                        if (arabic) it.arabicLabel else it.label
+                    } ?: problemText(prob, arabic)
+                    Text(
+                        text = titleText,
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold
+                    )
+                    val detailMsg = model.resolverError?.let { it.detail ?: it.userMessage(arabic) }
+                        ?: problemText(prob, arabic)
+                    if (detailMsg != titleText) {
+                        Text(
+                            text = detailMsg,
+                            color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.85f),
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                }
             }
         }
 
@@ -763,6 +779,17 @@ fun HomeScreen(
                                         style = MaterialTheme.typography.labelSmall,
                                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                     )
+                                }
+                                if (model.normalizedMetadata?.resolvedViaSmartPublicResolution == true) {
+                                    Badge(containerColor = Color(0xFF2E7D32).copy(alpha = 0.2f)) {
+                                        Text(
+                                            text = if (arabic) "عام (${model.normalizedMetadata?.resolutionStrategy?.arabicLabel})"
+                                            else "Public (${model.normalizedMetadata?.resolutionStrategy?.label})",
+                                            color = Color(0xFF2E7D32),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                        )
+                                    }
                                 }
                                 if (media.subtitles.isNotEmpty()) {
                                     Badge(containerColor = MaterialTheme.colorScheme.tertiaryContainer) {

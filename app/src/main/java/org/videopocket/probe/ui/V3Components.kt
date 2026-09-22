@@ -117,6 +117,7 @@ fun SupportedSourcesDialog(
                 ) {
                     items(providers, key = { it.id }) { provider ->
                         val health = ProviderHealthManager.getHealth(provider.id)
+                        val metrics = ProviderHealthManager.getMetrics(provider.id)
                         val isEnabled = FeatureFlagsManager.isProviderEnabled(provider.id)
 
                         Card(
@@ -177,6 +178,38 @@ fun SupportedSourcesDialog(
                                                     color = MaterialTheme.colorScheme.primary,
                                                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                                 )
+                                            }
+                                        }
+                                    }
+                                    if (metrics.preventedLoginRequiredCount > 0) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            Surface(
+                                                shape = RoundedCornerShape(6.dp),
+                                                color = Color(0xFF2E7D32).copy(alpha = 0.15f)
+                                            ) {
+                                                Text(
+                                                    text = if (arabic) "عام: ${metrics.preventedLoginRequiredCount}"
+                                                    else "Public: ${metrics.preventedLoginRequiredCount}",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = Color(0xFF2E7D32),
+                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                )
+                                            }
+                                            metrics.lastStrategy?.let { strat ->
+                                                Surface(
+                                                    shape = RoundedCornerShape(6.dp),
+                                                    color = MaterialTheme.colorScheme.secondaryContainer
+                                                ) {
+                                                    Text(
+                                                        text = if (arabic) strat.arabicLabel else strat.label,
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                    )
+                                                }
                                             }
                                         }
                                     }

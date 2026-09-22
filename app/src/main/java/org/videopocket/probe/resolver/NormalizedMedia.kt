@@ -18,19 +18,46 @@ enum class MediaType(val label: String, val arabicLabel: String) {
     SUBTITLE("Subtitle", "ترجمة")
 }
 
+enum class ResolutionClassification(val label: String, val arabicLabel: String) {
+    PUBLIC_RESOLVED("Publicly Resolved", "تم الاستخراج العام بنجاح"),
+    PUBLIC_MEDIA_UNAVAILABLE("Public Media Unavailable", "الوسائط العامة غير متوفرة"),
+    LOGIN_REQUIRED("Login Required", "يتطلب تسجيل الدخول"),
+    PRIVATE_MEDIA("Private Media", "محتوى خاص"),
+    GEO_RESTRICTED("Geo-Restricted", "مقيد جغرافياً"),
+    RATE_LIMITED("Rate Limited", "تجاوز حد الطلبات"),
+    DRM_PROTECTED("DRM Protected", "محمي بحقوق رقمية DRM"),
+    EXTRACTOR_OUTDATED("Extractor Outdated", "المستخرج يحتاج تحديث"),
+    TEMPORARILY_UNAVAILABLE("Temporarily Unavailable", "غير متاح مؤقتاً")
+}
+
+enum class ResolutionStrategy(val label: String, val arabicLabel: String) {
+    DEDICATED_EXTRACTOR("Dedicated Extractor", "مستخرج مخصص"),
+    CANONICAL_EXPANSION("Canonical Public URL", "توسيع الرابط الأساسي"),
+    GENERIC_FALLBACK("Universal Web Resolver", "المستخرج الشامل"),
+    PUBLIC_HTML_OPENGRAPH("Public OpenGraph / HTML5", "وسائط HTML5 / OpenGraph العامة"),
+    PUBLIC_MEDIA_MANIFEST("Public Media Manifest", "مانيفست الوسائط العام"),
+    DIRECT_STREAM_RESOLVE("Direct Stream Resolution", "فحص البث المباشر")
+}
+
 enum class ResolverErrorType(val defaultMessage: String, val defaultArabic: String) {
     INVALID_URL("Please enter a valid media URL.", "يرجى إدخال رابط وسائط صالح."),
     UNSUPPORTED_SOURCE("This media source or platform is not supported.", "هذا المصدر أو المنصة غير مدعومة حالياً."),
     PROVIDER_DISABLED("This provider is currently disabled in Settings.", "هذا المزود معطل حالياً في الإعدادات."),
     PROVIDER_UNAVAILABLE("This provider is currently unavailable.", "هذا المزود غير متاح حالياً."),
     MEDIA_NOT_FOUND("The requested media was not found or was removed.", "الوسائط المطلوبة غير موجودة أو تم حذفها."),
+    PUBLIC_MEDIA_UNAVAILABLE("The requested public media is no longer available on this page.", "الوسائط العامة المطلوبة لم تعد متوفرة في هذه الصفحة."),
     PRIVATE_MEDIA("This media is private or requires authentication.", "هذا المحتوى خاص أو يتطلب تسجيل الدخول."),
+    LOGIN_REQUIRED("Authentication is required to view this media.", "يتطلب هذا المحتوى تسجيل الدخول أو المصادقة."),
+    GEO_RESTRICTED("This media is not available in your geographical region.", "هذا المحتوى غير متاح في منطقتك الجغرافية."),
+    RATE_LIMITED("Request rate limit exceeded. Please wait a moment and try again.", "تم تجاوز حد الطلبات مؤقتاً. يرجى الانتظار والمحاولة لاحقاً."),
+    DRM_PROTECTED("This media is protected by Digital Rights Management (DRM) and cannot be downloaded.", "هذا المحتوى محمي بنظام إدارة الحقوق الرقمية (DRM) ولا يمكن تنزيله."),
+    EXTRACTOR_OUTDATED("The platform parser requires an update to handle changes on this page.", "مستخرج المنصة بحاجة إلى تحديث لمواكبة تغييرات الصفحة."),
+    TEMPORARILY_UNAVAILABLE("The media source is temporarily unavailable.", "المصدر غير متاح مؤقتاً. يرجى المحاولة لاحقاً."),
     NO_VARIANTS("No downloadable media streams found.", "لم يتم العثور على صيغ قابلة للتنزيل."),
     FORMAT_UNAVAILABLE("The requested format is not available for this media.", "الصيغة المطلوبة غير متوفرة لهذه الوسائط."),
     QUALITY_UNAVAILABLE("The selected quality is no longer available. Please re-analyze the link.", "الجودة المحددة غير متوفرة حالياً. يرجى إعادة فحص الرابط."),
     STREAM_EXPIRED("The media stream link expired. Please analyze the link again.", "انتهت صلاحية رابط الوسائط. يرجى إعادة فحص الرابط."),
     NETWORK_ERROR("Network connection failed. Please check your connection.", "تعذر الاتصال بالشبكة. يرجى التحقق من اتصالك."),
-    RATE_LIMITED("Request rate limit exceeded. Please wait a moment and try again.", "تم تجاوز حد الطلبات مؤقتاً. يرجى الانتظار والمحاولة لاحقاً."),
     PROVIDER_CHANGED("This platform format may have changed. Please try again later.", "قد يكون هيكل المنصة تغير. يرجى المحاولة لاحقاً."),
     PROCESSING_FAILED("Failed to process media metadata.", "فشلت معالجة بيانات الوسائط."),
     DOWNLOAD_ERROR("Failed to download media file.", "فشل تنزيل ملف الوسائط."),
@@ -40,9 +67,22 @@ enum class ResolverErrorType(val defaultMessage: String, val defaultArabic: Stri
     UNKNOWN("An unexpected error occurred while analyzing the link.", "حدث خطأ غير متوقع أثناء فحص الرابط.")
 }
 
+fun ResolverErrorType.toClassification(): ResolutionClassification = when (this) {
+    ResolverErrorType.LOGIN_REQUIRED -> ResolutionClassification.LOGIN_REQUIRED
+    ResolverErrorType.PRIVATE_MEDIA -> ResolutionClassification.PRIVATE_MEDIA
+    ResolverErrorType.PUBLIC_MEDIA_UNAVAILABLE, ResolverErrorType.MEDIA_NOT_FOUND, ResolverErrorType.NO_VARIANTS -> ResolutionClassification.PUBLIC_MEDIA_UNAVAILABLE
+    ResolverErrorType.GEO_RESTRICTED -> ResolutionClassification.GEO_RESTRICTED
+    ResolverErrorType.RATE_LIMITED -> ResolutionClassification.RATE_LIMITED
+    ResolverErrorType.DRM_PROTECTED -> ResolutionClassification.DRM_PROTECTED
+    ResolverErrorType.EXTRACTOR_OUTDATED, ResolverErrorType.PROVIDER_CHANGED -> ResolutionClassification.EXTRACTOR_OUTDATED
+    ResolverErrorType.TEMPORARILY_UNAVAILABLE, ResolverErrorType.PROVIDER_UNAVAILABLE, ResolverErrorType.NETWORK_ERROR -> ResolutionClassification.TEMPORARILY_UNAVAILABLE
+    else -> ResolutionClassification.TEMPORARILY_UNAVAILABLE
+}
+
 data class ResolverError(
     val type: ResolverErrorType,
-    val detail: String? = null
+    val detail: String? = null,
+    val classification: ResolutionClassification = type.toClassification()
 ) {
     fun userMessage(arabic: Boolean): String {
         return if (arabic) type.defaultArabic else type.defaultMessage
@@ -106,7 +146,10 @@ data class NormalizedMetadata(
     val variants: List<MediaVariant> = emptyList(),
     val subtitles: List<MediaSubtitle> = emptyList(),
     val items: List<MediaItem> = emptyList(),
-    val rawInfo: MediaInfo? = null
+    val rawInfo: MediaInfo? = null,
+    val resolutionStrategy: ResolutionStrategy = ResolutionStrategy.DEDICATED_EXTRACTOR,
+    val classification: ResolutionClassification = ResolutionClassification.PUBLIC_RESOLVED,
+    val resolvedViaSmartPublicResolution: Boolean = false
 ) {
     val heights: List<Int> get() = variants
         .filter { !it.isAudioOnly && it.height in 1..4320 }
@@ -142,4 +185,10 @@ data class NormalizedMetadata(
 sealed class MediaResolverResult {
     data class Success(val metadata: NormalizedMetadata) : MediaResolverResult()
     data class Failure(val error: ResolverError) : MediaResolverResult()
+
+    val classification: ResolutionClassification
+        get() = when (this) {
+            is Success -> metadata.classification
+            is Failure -> error.classification
+        }
 }

@@ -17,25 +17,74 @@ data class ProviderMetrics(
     val providerId: String,
     var successCount: Int = 0,
     var failureCount: Int = 0,
+    var contentSpecificErrorCount: Int = 0,
+    var preventedLoginRequiredCount: Int = 0,
     var lastLatencyMs: Long = 0,
-    var lastError: ResolverErrorType? = null
+    var lastError: ResolverErrorType? = null,
+    var lastStrategy: ResolutionStrategy? = null,
+    var lastClassification: ResolutionClassification? = null,
+    val strategyCounts: MutableMap<ResolutionStrategy, Int> = mutableMapOf()
 )
 
 object ProviderHealthManager {
     private val metricsMap = mutableMapOf<String, ProviderMetrics>()
 
     @Synchronized
-    fun recordSuccess(providerId: String, latencyMs: Long) {
+    fun recordSuccess(
+        providerId: String,
+        latencyMs: Long,
+        strategy: ResolutionStrategy = ResolutionStrategy.DEDICATED_EXTRACTOR,
+        preventedLoginRequired: Boolean = false
+    ) {
         val metrics = metricsMap.getOrPut(providerId) { ProviderMetrics(providerId) }
         metrics.successCount++
         metrics.lastLatencyMs = latencyMs
+        metrics.lastStrategy = strategy
+        metrics.lastClassification = ResolutionClassification.PUBLIC_RESOLVED
+        metrics.strategyCounts[strategy] = (metrics.strategyCounts[strategy] ?: 0) + 1
+        if (preventedLoginRequired) {
+            metrics.preventedLoginRequiredCount++
+        }
+    }
+
+    @Synchronized
+    fun recordPreventedLoginRequired(
+        providerId: String,
+        strategy: ResolutionStrategy,
+        latencyMs: Long
+    ) {
+        recordSuccess(
+            providerId = providerId,
+            latencyMs = latencyMs,
+            strategy = strategy,
+            preventedLoginRequired = true
+        )
     }
 
     @Synchronized
     fun recordFailure(providerId: String, errorType: ResolverErrorType) {
         val metrics = metricsMap.getOrPut(providerId) { ProviderMetrics(providerId) }
-        metrics.failureCount++
         metrics.lastError = errorType
+        metrics.lastClassification = errorType.toClassification()
+
+        // Content-specific errors (such as individual video login requirements,
+        // private accounts, or geo-restrictions) are property of that specific item,
+        // NOT a defect of the provider itself.
+        val isContentSpecific = when (errorType) {
+            ResolverErrorType.LOGIN_REQUIRED,
+            ResolverErrorType.PRIVATE_MEDIA,
+            ResolverErrorType.GEO_RESTRICTED,
+            ResolverErrorType.PUBLIC_MEDIA_UNAVAILABLE,
+            ResolverErrorType.MEDIA_NOT_FOUND,
+            ResolverErrorType.DRM_PROTECTED -> true
+            else -> false
+        }
+
+        if (isContentSpecific) {
+            metrics.contentSpecificErrorCount++
+        } else {
+            metrics.failureCount++
+        }
     }
 
     @Synchronized
@@ -44,9 +93,13 @@ object ProviderHealthManager {
             return ProviderHealth.DISABLED
         }
         val metrics = metricsMap[providerId] ?: return ProviderHealth.UNKNOWN
-        val total = metrics.successCount + metrics.failureCount
-        if (total == 0) return ProviderHealth.UNKNOWN
-        val failRatio = metrics.failureCount.toFloat() / total.toFloat()
+        val totalActionable = metrics.successCount + metrics.failureCount
+        if (totalActionable == 0) {
+            // If the provider has only encountered content-specific errors (like an individual login wall),
+            // it is still fully operational for public media.
+            return if (metrics.contentSpecificErrorCount > 0) ProviderHealth.AVAILABLE else ProviderHealth.UNKNOWN
+        }
+        val failRatio = metrics.failureCount.toFloat() / totalActionable.toFloat()
         return when {
             metrics.lastError == ResolverErrorType.RATE_LIMITED -> ProviderHealth.TEMPORARILY_BROKEN
             failRatio > 0.5f -> ProviderHealth.DEGRADED
