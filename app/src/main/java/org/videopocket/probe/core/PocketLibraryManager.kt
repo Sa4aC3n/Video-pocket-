@@ -1,0 +1,159 @@
+package org.videopocket.probe.core
+
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import org.json.JSONArray
+import org.json.JSONObject
+import java.io.File
+
+object PocketLibraryManager {
+    private const val FILE_NAME = "pocket_library.json"
+
+    private fun getFile(context: Context): File = File(context.filesDir, FILE_NAME)
+
+    @Synchronized
+    fun getItems(context: Context): List<PocketLibraryItem> {
+        val file = getFile(context)
+        if (!file.exists()) return emptyList()
+        return try {
+            val text = file.readText()
+            val array = JSONArray(text)
+            val items = mutableListOf<PocketLibraryItem>()
+            for (i in 0 until array.length()) {
+                val obj = array.getJSONObject(i)
+                val collectionsArray = obj.optJSONArray("collections")
+                val colList = mutableListOf<String>()
+                if (collectionsArray != null) {
+                    for (c in 0 until collectionsArray.length()) {
+                        colList.add(collectionsArray.getString(c))
+                    }
+                }
+                items.add(
+                    PocketLibraryItem(
+                        id = obj.optString("id"),
+                        title = obj.optString("title"),
+                        uriString = obj.optString("uriString"),
+                        isClip = obj.optBoolean("isClip"),
+                        clipRange = obj.optString("clipRange").takeIf { it.isNotBlank() },
+                        duration = obj.optString("duration"),
+                        resolution = obj.optString("resolution"),
+                        format = obj.optString("format"),
+                        fileSizeBytes = obj.optLong("fileSizeBytes"),
+                        createdAt = obj.optLong("createdAt", System.currentTimeMillis()),
+                        thumbnailUri = obj.optString("thumbnailUri").takeIf { it.isNotBlank() },
+                        platform = obj.optString("platform").takeIf { it.isNotBlank() },
+                        isFavorite = obj.optBoolean("isFavorite", false),
+                        collections = colList
+                    )
+                )
+            }
+            items.sortedByDescending { it.createdAt }
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    @Synchronized
+    fun saveItems(context: Context, items: List<PocketLibraryItem>) {
+        try {
+            val array = JSONArray()
+            items.forEach { item ->
+                val obj = JSONObject().apply {
+                    put("id", item.id)
+                    put("title", item.title)
+                    put("uriString", item.uriString)
+                    put("isClip", item.isClip)
+                    put("clipRange", item.clipRange ?: "")
+                    put("duration", item.duration)
+                    put("resolution", item.resolution)
+                    put("format", item.format)
+                    put("fileSizeBytes", item.fileSizeBytes)
+                    put("createdAt", item.createdAt)
+                    put("thumbnailUri", item.thumbnailUri ?: "")
+                    put("platform", item.platform ?: "")
+                    put("isFavorite", item.isFavorite)
+                    val cols = JSONArray()
+                    item.collections.forEach { cols.put(it) }
+                    put("collections", cols)
+                }
+                array.put(obj)
+            }
+            getFile(context).writeText(array.toString(2))
+        } catch (_: Exception) {}
+    }
+
+    @Synchronized
+    fun toggleFavorite(context: Context, id: String) {
+        val current = getItems(context)
+        val updated = current.map { item ->
+            if (item.id == id) item.copy(isFavorite = !item.isFavorite) else item
+        }
+        saveItems(context, updated)
+    }
+
+    @Synchronized
+    fun updateCollections(context: Context, id: String, collections: List<String>) {
+        val current = getItems(context)
+        val updated = current.map { item ->
+            if (item.id == id) item.copy(collections = collections) else item
+        }
+        saveItems(context, updated)
+    }
+
+    @Synchronized
+    fun addItem(context: Context, item: PocketLibraryItem) {
+        val existing = getItems(context).filter { it.id != item.id }
+        saveItems(context, listOf(item) + existing)
+    }
+
+    @Synchronized
+    fun deleteItem(context: Context, id: String) {
+        val current = getItems(context)
+        val item = current.firstOrNull { it.id == id }
+        if (item != null) {
+            try {
+                val uri = Uri.parse(item.uriString)
+                context.contentResolver.delete(uri, null, null)
+            } catch (_: Exception) {}
+        }
+        val remaining = current.filter { it.id != id }
+        saveItems(context, remaining)
+    }
+
+    @Synchronized
+    fun renameItem(context: Context, id: String, newTitle: String) {
+        val current = getItems(context)
+        val updated = current.map { item ->
+            if (item.id == id) item.copy(title = newTitle) else item
+        }
+        saveItems(context, updated)
+    }
+
+    fun playItem(context: Context, item: PocketLibraryItem) {
+        try {
+            val mime = if (item.format.equals("mp3", true) || item.format.equals("m4a", true)) "audio/*" else "video/*"
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(Uri.parse(item.uriString), mime)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(intent)
+        } catch (_: Exception) {}
+    }
+
+    fun shareItem(context: Context, item: PocketLibraryItem) {
+        try {
+            val uri = Uri.parse(item.uriString)
+            val mime = if (item.format.equals("mp3", true) || item.format.equals("m4a", true)) "audio/*" else "video/*"
+            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                type = mime
+                putExtra(Intent.EXTRA_STREAM, uri)
+                putExtra(Intent.EXTRA_TITLE, item.title)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(Intent.createChooser(shareIntent, item.title).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            })
+        } catch (_: Exception) {}
+    }
+}
