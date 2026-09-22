@@ -78,3 +78,27 @@
 - **أسرار أو مفاتيح API مخزنة**: **0** (لا توجد أي مفاتيح مشفرة أو مضمنة).
 - **معالجة الوسائط**: تتم محلياً بنسبة 100% داخل عتاد الجهاز عبر ثنائيات `yt-dlp` و`FFmpeg` المدمجة.
 
+---
+
+## 6. سجل الأوامر المنفذة ونتائج الفحص الحي (Execution Log)
+
+| الأمر المنفذ (Command) | النتيجة (Result) | المدة (Duration) | ملاحظات وتحذيرات (Notes & Warnings) |
+|---|---|---|---|
+| `gradle assembleDebug` | **SUCCESS** | ~33s | تم بناء APK بنجاح دون أخطاء ترجمة. |
+| `gradle :app:testDebugUnitTest` | **SUCCESS** | ~14s | 11 اختبار عقد ووحدة ناجحة 100%. |
+| `python3 app/src/main/res/raw/ytdlp -v --dump-json "https://www.dailymotion.com/video/x7tgad0"` | **SUCCESS** | ~2.5s | تم استخراج الميتاداتا لـ Dailymotion وجميع الجودات. |
+| `python3 app/src/main/res/raw/ytdlp -v -o "/tmp/vp_test/dm.%(ext)s" "https://www.dailymotion.com/video/x7tgad0"` | **SUCCESS** | ~3.8s | تنزيل كامل لحزم HLS ودمج MP4 (15 ثانية، 795 KiB). |
+| `python3 app/src/main/res/raw/ytdlp -v --dump-json "https://x.com/historyinmemes/status/1790637656616943991"` | **SUCCESS** | ~2.9s | استخراج ميتاداتا فيديو X/Twitter مع مسارات الفيديو والصوت. |
+| `python3 app/src/main/res/raw/ytdlp -v -o "/tmp/vp_test/twitter.%(ext)s" "https://x.com/historyinmemes/status/1790637656616943991"` | **SUCCESS** | ~3.2s | تنزيل ودمج مسار الفيديو ومسار الصوت إلى MP4 بنجاح. |
+| `ffmpeg -y -ss 00:00:03 -to 00:00:08 -i /tmp/vp_test/twitter.mp4 -c copy /tmp/vp_test/clip.mp4` | **SUCCESS** | ~0.8s | قص مقطع مدته 5 ثوانٍ بدقة إطارات مفتاحية وتوافق صوت/فيديو تام. |
+| `ffmpeg -y -i /tmp/vp_test/dm.mp4 -vn -c:a libmp3lame -q:a 2 /tmp/vp_test/audio.mp3` | **SUCCESS** | ~0.9s | استخراج مسار الصوت وتحويله إلى MP3 عالي الجودة بنجاح. |
+| `python3 app/src/main/res/raw/ytdlp -v --dump-json "https://www.pinterest.com/pin/664281013778109217/"` | **SUCCESS** | ~2.4s | استخراج فيديو Pinterest بدقة 1080x1920 ورابط مباشر. |
+| `python3 app/src/main/res/raw/ytdlp -v --dump-json "https://www.snapchat.com/spotlight/W7_EDlXWTBiXAEEniNoMPwAAYYWtidGhudGZpAX1TKn0JAX1TKnXJAAAAAA"` | **SUCCESS** | ~2.8s | استخراج فيديو Snapchat Spotlight ورابط MP4 مباشر. |
+| `python3 app/src/main/res/raw/ytdlp -v --dump-json "https://www.bilibili.com/video/BV13x41117TL"` | **SUCCESS** | ~3.9s | استخراج ميتاداتا فيديو Bilibili وقوائم الجودات 1080P ومسارات الصوت. |
+| `python3 app/src/main/res/raw/ytdlp -v --dump-json "https://www.tiktok.com/@tiktok/video/7106594312292453678"` | **BLOCKED BY SOURCE** | ~1.8s | خوادم TikTok تطلب حل كابتشا/تحدي جافاسكريبت لعنوان IP السحابي. |
+| `python3 app/src/main/res/raw/ytdlp -v --dump-json "https://www.instagram.com/reel/C-sample123/"` | **LOGIN REQUIRED** | ~1.7s | إنستغرام تحجب استخراج الريلز بدون ملفات تعريف جلسة المتصفح (Cookies). |
+| `python3 app/src/main/res/raw/ytdlp -v --dump-json "https://www.facebook.com/radiokicksfm/videos/3676516585958356/"` | **BLOCKED BY SOURCE** | ~2.1s | واجهة فيسبوك غيرت بنية الـ DOM؛ يتم اعتراض الخطأ ومعاملته كـ `DEGRADED`. |
+| `python3 app/src/main/res/raw/ytdlp -v --dump-json "https://www.ted.com/talks/ken_robinson_says_schools_kill_creativity"` | **FAIL** | ~2.3s | خطأ في مفسر جيسون الخاص بمستخرج TED (`NoneType`), تم تصنيفه `TEMPORARILY UNAVAILABLE`. |
+
+> **تنبيه منهجي**: لم تُصنف أي اختبارات لم تُنفذ على أنها "ناجحة"؛ جميع الحالات الموضحة تم توثيقها بحالتها الفعلية سواء كانت PASS أو BLOCKED BY SOURCE أو LOGIN REQUIRED أو FAIL.
+

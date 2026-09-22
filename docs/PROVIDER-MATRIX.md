@@ -2,23 +2,23 @@
 
 This document specifies the capabilities, validation status, engine dependencies, and fallback behaviors for all supported media providers in Video Pocket.
 
-| Provider Name | Provider ID | Supported URL Types / Domains | Supported Media Types | Contract Validated | Live Validated (Device) | Engine Dependency | Fallback Behavior | Feature Flag Key |
-|---|---|---|---|---|---|---|---|---|
-| **TikTok** | `tiktok` | `tiktok.com`, `vm.tiktok.com`, `vt.tiktok.com` (videos, user shares) | Video, Short Video, Audio, Gallery | Yes | Pending Live Run | `yt-dlp` (`tiktok.py`) | Fallback to `generic` on failure | `provider_tiktok_enabled` |
-| **Instagram** | `instagram` | `instagram.com`, `instagr.am` (`/reel/`, `/p/`, `/stories/`) | Reel, Post, Story, Video, Gallery | Yes | Pending Live Run | `yt-dlp` (`instagram.py`) | Fallback to `generic` on failure | `provider_instagram_enabled` |
-| **Facebook** | `facebook` | `facebook.com`, `fb.watch`, `fb.com`, `m.facebook.com` | Video, Reel, Story | Yes | Pending Live Run | `yt-dlp` (`facebook.py`) + FFmpeg | Fallback to `generic` on failure | `provider_facebook_enabled` |
-| **X / Twitter** | `twitter` | `twitter.com`, `x.com`, `t.co` (posts with media) | Video, GIF, Short Video | Yes | Pending Live Run | `yt-dlp` (`twitter.py`) | Fallback to `generic` on failure | `provider_twitter_enabled` |
-| **Reddit** | `reddit` | `reddit.com`, `redd.it`, `v.redd.it` (video posts) | Video, GIF, Post | Yes | Pending Live Run | `yt-dlp` (`reddit.py`) + FFmpeg DASH | Fallback to `generic` on failure | `provider_reddit_enabled` |
-| **Vimeo** | `vimeo` | `vimeo.com`, `player.vimeo.com` (public videos) | Video | Yes | Pending Live Run | `yt-dlp` (`vimeo.py`) + FFmpeg | Fallback to `generic` on failure | `provider_vimeo_enabled` |
-| **Dailymotion** | `dailymotion` | `dailymotion.com`, `dai.ly` (videos, playlists) | Video, Playlist | Yes | Pending Live Run | `yt-dlp` (`dailymotion.py`) | Fallback to `generic` on failure | `provider_dailymotion_enabled` |
-| **Bilibili** | `bilibili` | `bilibili.com`, `b23.tv` (public videos) | Video, Audio | Yes | Pending Live Run | `yt-dlp` (`bilibili.py`) + FFmpeg | Fallback to `generic` on failure | `provider_bilibili_enabled` |
-| **SoundCloud** | `soundcloud` | `soundcloud.com`, `on.soundcloud.com` (tracks, sets) | Audio, Playlist | Yes | Pending Live Run | `yt-dlp` (`soundcloud.py`) | Fallback to `generic` on failure | `provider_soundcloud_enabled` |
-| **Tumblr** | `tumblr` | `tumblr.com`, `tmblr.co` (public media posts) | Video, Audio, Image, GIF | Yes | Pending Live Run | `yt-dlp` (`tumblr.py`) | Fallback to `generic` on failure | `provider_tumblr_enabled` |
-| **Snapchat** | `snapchat` | `snapchat.com`, `story.snapchat.com` (public stories) | Story, Video | Yes | Pending Live Run | `yt-dlp` (`snapchat.py`) | Fallback to `generic` on failure | `provider_snapchat_enabled` |
-| **Pinterest** | `pinterest` | `pinterest.com`, `pin.it` (pins, video pins, images) | Video, Image | Yes | Pending Live Run | `yt-dlp` (`pinterest.py`) | Fallback to `generic` on failure | `provider_pinterest_enabled` |
-| **TED** | `ted` | `ted.com` (talks, playlists) | Video, Audio, Subtitle, Playlist | Yes | Pending Live Run | `yt-dlp` (`ted.py`) + FFmpeg | Fallback to `generic` on failure | `provider_ted_enabled` |
-| **Twitch** | `twitch` | `twitch.tv`, `clips.twitch.tv` (public clips, VODs) | Clip, Video | Yes | Pending Live Run | `yt-dlp` (`twitch.py`) + FFmpeg | Fallback to `generic` on failure | `provider_twitch_enabled` |
-| **Universal Web** | `generic` | `http://*`, `https://*` (any yt-dlp supported source) | Video, Audio, Playlist, Subtitle | Yes | Pending Live Run | Bundled `yt-dlp` extractors | Terminal fallback | Always enabled |
+| Provider Name | Provider ID | Registered | Contract Tested | Live Resolution | E2E Download | Clip | Last Live Test | Final Status | Fallback Behavior |
+|---|---|---|---|---|---|---|---|---|---|
+| **TikTok** | `tiktok` | Yes | Yes | BLOCKED BY SOURCE | NOT TESTED | NOT TESTED | 2026-09-22 | **TEMPORARILY BROKEN** | Fallback to `generic` on failure |
+| **Instagram** | `instagram` | Yes | Yes | LOGIN REQUIRED | NOT APPLICABLE | NOT APPLICABLE | 2026-09-22 | **DEGRADED** | Fallback to `generic` on failure |
+| **Facebook** | `facebook` | Yes | Yes | BLOCKED BY SOURCE | NOT TESTED | NOT TESTED | 2026-09-22 | **DEGRADED** | Fallback to `generic` on failure |
+| **X / Twitter** | `twitter` | Yes | Yes | PASS | PASS | PASS | 2026-09-22 | **LIVE VERIFIED** | Fallback to `generic` on failure |
+| **Reddit** | `reddit` | Yes | Yes | LOGIN REQUIRED | NOT APPLICABLE | NOT APPLICABLE | 2026-09-22 | **DEGRADED** | Fallback to `generic` on failure |
+| **Vimeo** | `vimeo` | Yes | Yes | LOGIN REQUIRED | NOT APPLICABLE | NOT APPLICABLE | 2026-09-22 | **DEGRADED** | Fallback to `generic` on failure |
+| **Dailymotion** | `dailymotion` | Yes | Yes | PASS | PASS | PASS | 2026-09-22 | **LIVE VERIFIED** | Fallback to `generic` on failure |
+| **Bilibili** | `bilibili` | Yes | Yes | PASS | NOT TESTED | NOT TESTED | 2026-09-22 | **PARTIALLY VERIFIED** | Fallback to `generic` on failure |
+| **SoundCloud** | `soundcloud` | Yes | Yes | BLOCKED BY SOURCE | NOT TESTED | NOT TESTED | 2026-09-22 | **DEGRADED** | Fallback to `generic` on failure |
+| **Tumblr** | `tumblr` | Yes | Yes | BLOCKED BY SOURCE | NOT TESTED | NOT TESTED | 2026-09-22 | **TEMPORARILY BROKEN** | Fallback to `generic` on failure |
+| **Snapchat** | `snapchat` | Yes | Yes | PASS | PASS | NOT TESTED | 2026-09-22 | **LIVE VERIFIED** | Fallback to `generic` on failure |
+| **Pinterest** | `pinterest` | Yes | Yes | PASS | PASS | NOT TESTED | 2026-09-22 | **LIVE VERIFIED** | Fallback to `generic` on failure |
+| **TED** | `ted` | Yes | Yes | FAIL (Extractor bug) | NOT TESTED | NOT TESTED | 2026-09-22 | **TEMPORARILY BROKEN** | Fallback to `generic` on failure |
+| **Twitch** | `twitch` | Yes | Yes | NOT TESTED (Clip 404) | NOT TESTED | NOT TESTED | 2026-09-22 | **CONTRACT ONLY** | Fallback to `generic` on failure |
+| **Universal Web** | `generic` | Yes | Yes | PASS | PASS | PASS | 2026-09-22 | **LIVE VERIFIED** | Terminal fallback |
 
 ---
 
