@@ -17,6 +17,9 @@ object ProviderRegistry {
         SoundCloudProvider(),
         TumblrProvider(),
         SnapchatProvider(),
+        PinterestProvider(),
+        TedProvider(),
+        TwitchProvider(),
         genericProvider
     )
 

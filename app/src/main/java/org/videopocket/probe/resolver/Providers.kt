@@ -6,6 +6,8 @@ import org.videopocket.probe.engine.ProbeEngine
 
 abstract class BaseMediaProvider : MediaProvider {
 
+    override val capabilities: ProviderCapabilities = ProviderCapabilities()
+
     override fun canHandle(url: String): Boolean {
         val host = try {
             val trimmed = url.trim()
@@ -215,6 +217,10 @@ class TikTokProvider : BaseMediaProvider() {
     override val iconName = "tiktok"
     override val supportedMediaTypes = setOf(MediaType.SHORT_VIDEO, MediaType.VIDEO, MediaType.AUDIO, MediaType.IMAGE_GALLERY)
     override val supportedDomains = listOf("tiktok.com", "vm.tiktok.com", "vt.tiktok.com")
+    override val capabilities = ProviderCapabilities(
+        video = true, audio = true, image = true, gallery = true, shortVideo = true, clip = true,
+        separateVideoAudioStreams = false, multipleQualities = false, multipleFormats = false
+    )
 
     override fun detectMediaType(url: String, info: MediaInfo): MediaType {
         return if (info.formats.all { it.audio && !it.video }) MediaType.AUDIO else MediaType.SHORT_VIDEO
@@ -227,6 +233,10 @@ class InstagramProvider : BaseMediaProvider() {
     override val iconName = "instagram"
     override val supportedMediaTypes = setOf(MediaType.REEL, MediaType.POST, MediaType.STORY, MediaType.VIDEO, MediaType.IMAGE_GALLERY)
     override val supportedDomains = listOf("instagram.com", "instagr.am")
+    override val capabilities = ProviderCapabilities(
+        video = true, audio = true, image = true, gallery = true, reel = true, story = true, clip = true,
+        separateVideoAudioStreams = false, multipleQualities = false, multipleFormats = false
+    )
 
     override fun detectMediaType(url: String, info: MediaInfo): MediaType {
         val u = url.lowercase()
@@ -245,6 +255,10 @@ class FacebookProvider : BaseMediaProvider() {
     override val iconName = "facebook"
     override val supportedMediaTypes = setOf(MediaType.VIDEO, MediaType.REEL, MediaType.STORY)
     override val supportedDomains = listOf("facebook.com", "fb.watch", "fb.com", "m.facebook.com")
+    override val capabilities = ProviderCapabilities(
+        video = true, audio = true, reel = true, story = true, clip = true,
+        separateVideoAudioStreams = true, multipleQualities = true, multipleFormats = false
+    )
 
     override fun detectMediaType(url: String, info: MediaInfo): MediaType {
         val u = url.lowercase()
@@ -262,6 +276,10 @@ class XProvider : BaseMediaProvider() {
     override val iconName = "x"
     override val supportedMediaTypes = setOf(MediaType.VIDEO, MediaType.GIF, MediaType.SHORT_VIDEO)
     override val supportedDomains = listOf("twitter.com", "x.com", "t.co")
+    override val capabilities = ProviderCapabilities(
+        video = true, audio = true, gif = true, shortVideo = true, clip = true,
+        separateVideoAudioStreams = false, multipleQualities = true, multipleFormats = false
+    )
 
     override fun detectMediaType(url: String, info: MediaInfo): MediaType {
         return MediaType.VIDEO
@@ -274,6 +292,10 @@ class RedditProvider : BaseMediaProvider() {
     override val iconName = "reddit"
     override val supportedMediaTypes = setOf(MediaType.VIDEO, MediaType.GIF, MediaType.POST)
     override val supportedDomains = listOf("reddit.com", "redd.it", "v.redd.it")
+    override val capabilities = ProviderCapabilities(
+        video = true, audio = true, gif = true, clip = true,
+        separateVideoAudioStreams = true, multipleQualities = true, multipleFormats = false
+    )
 }
 
 class VimeoProvider : BaseMediaProvider() {
@@ -282,6 +304,10 @@ class VimeoProvider : BaseMediaProvider() {
     override val iconName = "vimeo"
     override val supportedMediaTypes = setOf(MediaType.VIDEO)
     override val supportedDomains = listOf("vimeo.com", "player.vimeo.com")
+    override val capabilities = ProviderCapabilities(
+        video = true, audio = true, clip = true,
+        separateVideoAudioStreams = true, multipleQualities = true, multipleFormats = true
+    )
 }
 
 class DailymotionProvider : BaseMediaProvider() {
@@ -290,6 +316,10 @@ class DailymotionProvider : BaseMediaProvider() {
     override val iconName = "dailymotion"
     override val supportedMediaTypes = setOf(MediaType.VIDEO, MediaType.PLAYLIST)
     override val supportedDomains = listOf("dailymotion.com", "dai.ly")
+    override val capabilities = ProviderCapabilities(
+        video = true, audio = true, playlist = true, clip = true,
+        separateVideoAudioStreams = false, multipleQualities = true, multipleFormats = true
+    )
 }
 
 class BilibiliProvider : BaseMediaProvider() {
@@ -298,6 +328,10 @@ class BilibiliProvider : BaseMediaProvider() {
     override val iconName = "bilibili"
     override val supportedMediaTypes = setOf(MediaType.VIDEO, MediaType.AUDIO)
     override val supportedDomains = listOf("bilibili.com", "b23.tv")
+    override val capabilities = ProviderCapabilities(
+        video = true, audio = true, clip = true,
+        separateVideoAudioStreams = true, multipleQualities = true, multipleFormats = true
+    )
 }
 
 class SoundCloudProvider : BaseMediaProvider() {
@@ -306,6 +340,10 @@ class SoundCloudProvider : BaseMediaProvider() {
     override val iconName = "soundcloud"
     override val supportedMediaTypes = setOf(MediaType.AUDIO, MediaType.PLAYLIST)
     override val supportedDomains = listOf("soundcloud.com", "on.soundcloud.com")
+    override val capabilities = ProviderCapabilities(
+        video = false, audio = true, playlist = true, clip = false,
+        separateVideoAudioStreams = false, multipleQualities = true, multipleFormats = true
+    )
 
     override fun detectMediaType(url: String, info: MediaInfo): MediaType {
         return if (info.isPlaylist) MediaType.PLAYLIST else MediaType.AUDIO
@@ -318,6 +356,10 @@ class TumblrProvider : BaseMediaProvider() {
     override val iconName = "tumblr"
     override val supportedMediaTypes = setOf(MediaType.VIDEO, MediaType.AUDIO, MediaType.IMAGE, MediaType.GIF)
     override val supportedDomains = listOf("tumblr.com", "tmblr.co")
+    override val capabilities = ProviderCapabilities(
+        video = true, audio = true, image = true, gif = true, clip = true,
+        separateVideoAudioStreams = false, multipleQualities = false, multipleFormats = true
+    )
 }
 
 class SnapchatProvider : BaseMediaProvider() {
@@ -326,10 +368,54 @@ class SnapchatProvider : BaseMediaProvider() {
     override val iconName = "snapchat"
     override val supportedMediaTypes = setOf(MediaType.STORY, MediaType.VIDEO)
     override val supportedDomains = listOf("snapchat.com", "story.snapchat.com")
+    override val capabilities = ProviderCapabilities(
+        video = true, audio = true, story = true, shortVideo = true, clip = true,
+        separateVideoAudioStreams = false, multipleQualities = false, multipleFormats = false
+    )
 
     override fun detectMediaType(url: String, info: MediaInfo): MediaType {
         return MediaType.STORY
     }
+}
+
+class PinterestProvider : BaseMediaProvider() {
+    override val id = "pinterest"
+    override val name = "Pinterest"
+    override val iconName = "pinterest"
+    override val supportedMediaTypes = setOf(MediaType.VIDEO, MediaType.IMAGE)
+    override val supportedDomains = listOf("pinterest.com", "pin.it")
+    override val capabilities = ProviderCapabilities(
+        video = true, audio = true, image = true, gallery = false, clip = true,
+        separateVideoAudioStreams = false, multipleQualities = false, multipleFormats = false
+    )
+
+    override fun detectMediaType(url: String, info: MediaInfo): MediaType {
+        return if (info.formats.isEmpty()) MediaType.IMAGE else MediaType.VIDEO
+    }
+}
+
+class TedProvider : BaseMediaProvider() {
+    override val id = "ted"
+    override val name = "TED"
+    override val iconName = "school"
+    override val supportedMediaTypes = setOf(MediaType.VIDEO, MediaType.AUDIO, MediaType.SUBTITLE, MediaType.PLAYLIST)
+    override val supportedDomains = listOf("ted.com")
+    override val capabilities = ProviderCapabilities(
+        video = true, audio = true, playlist = true, subtitles = true, clip = true,
+        separateVideoAudioStreams = true, multipleQualities = true, multipleFormats = true
+    )
+}
+
+class TwitchProvider : BaseMediaProvider() {
+    override val id = "twitch"
+    override val name = "Twitch"
+    override val iconName = "videogame_asset"
+    override val supportedMediaTypes = setOf(MediaType.CLIP, MediaType.VIDEO)
+    override val supportedDomains = listOf("twitch.tv", "clips.twitch.tv")
+    override val capabilities = ProviderCapabilities(
+        video = true, audio = true, clip = true,
+        separateVideoAudioStreams = true, multipleQualities = true, multipleFormats = true
+    )
 }
 
 class GenericProvider : BaseMediaProvider() {
@@ -338,6 +424,10 @@ class GenericProvider : BaseMediaProvider() {
     override val iconName = "public"
     override val supportedMediaTypes = setOf(MediaType.VIDEO, MediaType.AUDIO, MediaType.PLAYLIST, MediaType.SUBTITLE)
     override val supportedDomains = emptyList<String>()
+    override val capabilities = ProviderCapabilities(
+        video = true, audio = true, playlist = true, subtitles = true, clip = true,
+        separateVideoAudioStreams = true, multipleQualities = true, multipleFormats = true
+    )
 
     override fun canHandle(url: String): Boolean {
         // Universal fallback for any valid http/https URL

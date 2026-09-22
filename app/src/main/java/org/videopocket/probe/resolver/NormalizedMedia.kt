@@ -14,20 +14,29 @@ enum class MediaType(val label: String, val arabicLabel: String) {
     SHORT_VIDEO("Short", "فيديو قصير"),
     POST("Post", "منشور"),
     PLAYLIST("Playlist", "قائمة تشغيل"),
+    CLIP("Clip", "مقطع"),
     SUBTITLE("Subtitle", "ترجمة")
 }
 
 enum class ResolverErrorType(val defaultMessage: String, val defaultArabic: String) {
     INVALID_URL("Please enter a valid media URL.", "يرجى إدخال رابط وسائط صالح."),
     UNSUPPORTED_SOURCE("This media source or platform is not supported.", "هذا المصدر أو المنصة غير مدعومة حالياً."),
+    PROVIDER_DISABLED("This provider is currently disabled in Settings.", "هذا المزود معطل حالياً في الإعدادات."),
+    PROVIDER_UNAVAILABLE("This provider is currently unavailable.", "هذا المزود غير متاح حالياً."),
     MEDIA_NOT_FOUND("The requested media was not found or was removed.", "الوسائط المطلوبة غير موجودة أو تم حذفها."),
     PRIVATE_MEDIA("This media is private or requires authentication.", "هذا المحتوى خاص أو يتطلب تسجيل الدخول."),
     NO_VARIANTS("No downloadable media streams found.", "لم يتم العثور على صيغ قابلة للتنزيل."),
+    FORMAT_UNAVAILABLE("The requested format is not available for this media.", "الصيغة المطلوبة غير متوفرة لهذه الوسائط."),
+    QUALITY_UNAVAILABLE("The selected quality is no longer available. Please re-analyze the link.", "الجودة المحددة غير متوفرة حالياً. يرجى إعادة فحص الرابط."),
+    STREAM_EXPIRED("The media stream link expired. Please analyze the link again.", "انتهت صلاحية رابط الوسائط. يرجى إعادة فحص الرابط."),
     NETWORK_ERROR("Network connection failed. Please check your connection.", "تعذر الاتصال بالشبكة. يرجى التحقق من اتصالك."),
-    PROVIDER_CHANGED("This platform format may have changed. Please try again later.", "قد يكون هيكل المنصة تغير. يرجى المحاولة لاحقاً."),
     RATE_LIMITED("Request rate limit exceeded. Please wait a moment and try again.", "تم تجاوز حد الطلبات مؤقتاً. يرجى الانتظار والمحاولة لاحقاً."),
+    PROVIDER_CHANGED("This platform format may have changed. Please try again later.", "قد يكون هيكل المنصة تغير. يرجى المحاولة لاحقاً."),
     PROCESSING_FAILED("Failed to process media metadata.", "فشلت معالجة بيانات الوسائط."),
+    DOWNLOAD_ERROR("Failed to download media file.", "فشل تنزيل ملف الوسائط."),
+    MERGE_ERROR("Failed to combine video and audio streams.", "فشل في دمج مساري الفيديو والصوت."),
     INSUFFICIENT_STORAGE("Insufficient device storage to process this media.", "مساحة التخزين غير كافية لمعالجة هذه الوسائط."),
+    CANCELLED("Operation was cancelled by user.", "تم إلغاء العملية بواسطة المستخدم."),
     UNKNOWN("An unexpected error occurred while analyzing the link.", "حدث خطأ غير متوقع أثناء فحص الرابط.")
 }
 
@@ -110,6 +119,24 @@ data class NormalizedMetadata(
     val audioVariants: List<MediaVariant> get() = variants.filter { it.isAudioOnly }
 
     val videoVariants: List<MediaVariant> get() = variants.filter { !it.isAudioOnly }
+
+    fun getBestAvailable(): MediaVariant? {
+        return videoVariants.maxByOrNull { it.height } ?: videoVariants.firstOrNull()
+    }
+
+    fun getBalanced(): MediaVariant? {
+        val fhdOrHd = videoVariants.filter { it.height in 720..1080 }
+        return fhdOrHd.maxByOrNull { it.height } ?: getBestAvailable()
+    }
+
+    fun getSmallestFile(): MediaVariant? {
+        val nonZero = videoVariants.filter { it.height > 0 }
+        return nonZero.minByOrNull { it.fileSize ?: (it.height.toLong() * 1000L) } ?: videoVariants.minByOrNull { it.height }
+    }
+
+    fun getBestAudio(): MediaVariant? {
+        return audioVariants.maxByOrNull { it.bitrate } ?: audioVariants.firstOrNull()
+    }
 }
 
 sealed class MediaResolverResult {

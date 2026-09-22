@@ -43,14 +43,15 @@ object ProviderHealthManager {
         if (!FeatureFlagsManager.isProviderEnabled(providerId)) {
             return ProviderHealth.DISABLED
         }
-        val metrics = metricsMap[providerId] ?: return ProviderHealth.WORKING
+        val metrics = metricsMap[providerId] ?: return ProviderHealth.UNKNOWN
         val total = metrics.successCount + metrics.failureCount
-        if (total == 0) return ProviderHealth.WORKING
+        if (total == 0) return ProviderHealth.UNKNOWN
         val failRatio = metrics.failureCount.toFloat() / total.toFloat()
         return when {
-            metrics.lastError == ResolverErrorType.RATE_LIMITED -> ProviderHealth.TEMPORARILY_UNAVAILABLE
+            metrics.lastError == ResolverErrorType.RATE_LIMITED -> ProviderHealth.TEMPORARILY_BROKEN
             failRatio > 0.5f -> ProviderHealth.DEGRADED
-            else -> ProviderHealth.WORKING
+            metrics.successCount > 0 -> ProviderHealth.AVAILABLE
+            else -> ProviderHealth.TEMPORARILY_BROKEN
         }
     }
 

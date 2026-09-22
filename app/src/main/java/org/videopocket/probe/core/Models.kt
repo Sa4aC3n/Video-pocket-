@@ -42,21 +42,27 @@ data class MediaInfo(
 data class ProbeResult(val action: ProbeAction, val elapsedMs: Long, val bytes: Long, val outputUri: String?, val passed: Boolean, val detail: String)
 
 enum class QualityTier(val label: String, val category: String) {
+    LD_144("144p", "SD"),
+    LD_240("240p", "SD"),
     SD_360("360p", "SD"),
     SD_480("480p", "SD"),
     HD_720("720p", "HD"),
-    FHD_1080("1080p", "Full HD"),
+    FHD_1080("1080p", "FHD"),
     QHD_1440("1440p", "2K"),
-    UHD_2160("2160p", "4K");
+    UHD_2160("2160p", "4K"),
+    UHD_4320("4320p", "8K");
 
     companion object {
         fun fromHeight(height: Int): QualityTier = when {
+            height <= 144 -> LD_144
+            height <= 240 -> LD_240
             height <= 360 -> SD_360
             height <= 480 -> SD_480
             height <= 720 -> HD_720
             height <= 1080 -> FHD_1080
             height <= 1440 -> QHD_1440
-            else -> UHD_2160
+            height <= 2160 -> UHD_2160
+            else -> UHD_4320
         }
     }
 }

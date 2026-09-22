@@ -22,7 +22,26 @@ enum class DownloadState(val label: String, val arabicLabel: String) {
     SAVING("Saving to Device", "حفظ في الجهاز"),
     COMPLETED("Completed", "مكتمل"),
     FAILED("Failed", "فشل"),
-    CANCELLED("Cancelled", "ملغى")
+    CANCELLED("Cancelled", "ملغى");
+
+    companion object {
+        fun canTransition(from: DownloadState, to: DownloadState): Boolean {
+            if (from == to) return true
+            return when (from) {
+                QUEUED -> to in setOf(RESOLVING, DOWNLOADING, PAUSED, CANCELLED)
+                RESOLVING -> to in setOf(READY, DOWNLOADING, FAILED, CANCELLED)
+                READY -> to in setOf(DOWNLOADING, PAUSED, CANCELLED)
+                DOWNLOADING -> to in setOf(PAUSED, MERGING, TRANSCODING, SAVING, COMPLETED, FAILED, CANCELLED)
+                PAUSED -> to in setOf(QUEUED, DOWNLOADING, CANCELLED)
+                MERGING -> to in setOf(TRANSCODING, SAVING, COMPLETED, FAILED, CANCELLED)
+                TRANSCODING -> to in setOf(SAVING, COMPLETED, FAILED, CANCELLED)
+                SAVING -> to in setOf(COMPLETED, FAILED)
+                COMPLETED -> false // Terminal state
+                FAILED -> to in setOf(QUEUED, RESOLVING, DOWNLOADING) // Retry
+                CANCELLED -> to in setOf(QUEUED, RESOLVING, DOWNLOADING) // Retry
+            }
+        }
+    }
 }
 
 data class DownloadTask(

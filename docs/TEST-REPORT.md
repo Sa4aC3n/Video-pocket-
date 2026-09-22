@@ -9,17 +9,21 @@
 ---
 
 ## 2. نتائج اختبارات الوحدة وعقود المزودين (Unit Tests)
-- **مهمة الاختبار**: `gradle :app:testDebugUnitTest` — **BUILD SUCCESSFUL**.
+- **مهمة الاختبار**: `gradle :app:testDebugUnitTest` — **BUILD SUCCESSFUL** (جميع الاختبارات تمر بنجاح 100%).
 - **مجموعة `PolicyTest`**:
   - فحص وتنقية الروابط المدخلة ورفض البروتوكولات غير الآمنة (non-HTTP/HTTPS).
   - رفض محاولات تمرير بيانات الاعتماد في الروابط (`userInfo`).
   - منع حقن محارف موجه الأوامر (Shell Control Characters).
   - التحقق من معاملات الروابط الحيوية (v, list, t) وتجريد معاملات التتبع الإعلاني (utm_*, igsh, fbclid).
 - **مجموعة `ProviderContractTest`**:
-  - التحقق من تطبيق عقد المزود الموحد (`BaseMediaProvider`) لجميع المزودين الـ 12.
+  - التحقق من تطبيق عقد المزود الموحد (`BaseMediaProvider`) لجميع المزودين الـ 15 (بما في ذلك Pinterest وTED وTwitch الجدد).
   - اختبار المطابقة الصحيحة لنطاقات الروابط لكل مزود وتوجيهها للمزود المتخصص.
   - اختبار التوجيه التلقائي للمزود العام (`GenericProvider`) للروابط العامة.
-  - فحص دورة حياة وتغير حالات صحة المزودين (`ProviderHealthManager`).
+  - اختبار مصفوفة القدرات الحقيقية (`ProviderCapabilities`) لكل مزود وعزل الأنواع غير المدعومة (مثال: نفي الفيديو عن SoundCloud).
+  - اختبار آلة حالات التنزيل (`DownloadState.canTransition`) ورفض الانتقالات غير القانونية (مثل من `COMPLETED` إلى `DOWNLOADING`).
+  - اختبار اشتقاق الإعدادات المسبقة للجودة (Best Available, Balanced, Smallest File, Best Audio).
+  - اختبار شجرة الأخطاء الموسعة (`ResolverErrorType`) وترجماتها الدقيقة باللغتين العربية والإنجليزية.
+  - فحص دورة حياة وتغير حالات صحة المزودين (`ProviderHealthManager`) والتأكد من كون `UNKNOWN` هي الحالة الافتراضية الآمنة قبل الفحص الفعلي.
   - اختبار تفعيل وتعطيل المزودات عبر مفاتيح الميزات (`FeatureFlagsManager`).
   - اختبار واجهة المحرك الموحد (`UniversalMediaEngine`).
 
@@ -27,7 +31,7 @@
 
 ## 3. الميزات المكتملة والمحققة فعلياً (Verified Features)
 1. **UniversalMediaEngine**: واجهة موحدة للتوجيه والاستخراج تعتمد مبدأ المحلي أولاً (Local-First).
-2. **ProviderRegistry**: سجل مركزي يدير المزودين الـ 12 مع عزل تام للأخطاء (Failure Isolation).
+2. **ProviderRegistry**: سجل مركزي يدير المزودين الـ 15 مع عزل تام للأخطاء (Failure Isolation).
 3. **Clip Studio (استوديو القص)**:
    - تحديد دقيق لبداية ونهاية المقطع عبر خط زمني بمقبضين (Dual Handles).
    - أزرار تقديم وتأخير دقيقة (±1s و ±5s وإدخال زمني مباشر).
@@ -49,20 +53,23 @@
 ---
 
 ## 4. المزودات المفحوصة وحالتها (Provider Inventory)
-| المزود | المعرف | الحالة | نوع الوسائط |
+| المزود | المعرف | الحالة التعاقدية | نوع الوسائط |
 | :--- | :--- | :--- | :--- |
-| TikTok | `tiktok` | **يعمل محلياً (AVAILABLE)** | فيديو، صوت، صور |
-| Instagram | `instagram` | **يعمل محلياً (AVAILABLE)** | Reels، منشورات، Stories |
-| Facebook | `facebook` | **يعمل محلياً (AVAILABLE)** | فيديو، Reels |
-| X / Twitter | `twitter` | **يعمل محلياً (AVAILABLE)** | فيديو، GIF |
-| Reddit | `reddit` | **يعمل محلياً (AVAILABLE)** | فيديو، صوت، GIF |
-| Vimeo | `vimeo` | **يعمل محلياً (AVAILABLE)** | فيديو، جودات متعددة |
-| Dailymotion | `dailymotion` | **يعمل محلياً (AVAILABLE)** | فيديو، قوائم تشغيل |
-| Bilibili | `bilibili` | **يعمل محلياً (AVAILABLE)** | فيديو، صوت |
-| SoundCloud | `soundcloud` | **يعمل محلياً (AVAILABLE)** | صوت، قوائم تشغيل |
-| Tumblr | `tumblr` | **يعمل محلياً (AVAILABLE)** | فيديو، صوت، صور |
-| Snapchat | `snapchat` | **يعمل محلياً (AVAILABLE)** | Stories، فيديو |
-| Generic Web | `generic` | **يعمل محلياً (AVAILABLE)** | عام لكافة المواقع المدعومة في yt-dlp |
+| TikTok | `tiktok` | **Contract Validated** | فيديو، صوت، صور، قصص |
+| Instagram | `instagram` | **Contract Validated** | Reels، منشورات، Stories |
+| Facebook | `facebook` | **Contract Validated** | فيديو، Reels |
+| X / Twitter | `twitter` | **Contract Validated** | فيديو، GIF |
+| Reddit | `reddit` | **Contract Validated** | فيديو، صوت، GIF |
+| Vimeo | `vimeo` | **Contract Validated** | فيديو، جودات متعددة |
+| Dailymotion | `dailymotion` | **Contract Validated** | فيديو، قوائم تشغيل |
+| Bilibili | `bilibili` | **Contract Validated** | فيديو، صوت |
+| SoundCloud | `soundcloud` | **Contract Validated** | صوت، قوائم تشغيل |
+| Tumblr | `tumblr` | **Contract Validated** | فيديو، صوت، صور |
+| Snapchat | `snapchat` | **Contract Validated** | قصص، فيديو |
+| Pinterest | `pinterest` | **Contract Validated (جديد)** | فيديو، صور |
+| TED | `ted` | **Contract Validated (جديد)** | فيديو، صوت، ترجمات، قوائم |
+| Twitch | `twitch` | **Contract Validated (جديد)** | مقاطع (Clips)، فيديو |
+| Universal Web | `generic` | **Contract Validated** | فيديو، صوت، قوائم، ترجمات |
 
 ---
 

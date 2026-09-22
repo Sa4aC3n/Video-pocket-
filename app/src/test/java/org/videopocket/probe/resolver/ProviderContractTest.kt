@@ -56,7 +56,10 @@ class ProviderContractTest {
             "bilibili" to "https://www.bilibili.com/video/BV1xx411c7mD",
             "soundcloud" to "https://soundcloud.com/artist/track-name",
             "tumblr" to "https://artist.tumblr.com/post/123456789/video-slug",
-            "snapchat" to "https://story.snapchat.com/s/sample_story"
+            "snapchat" to "https://story.snapchat.com/s/sample_story",
+            "pinterest" to "https://www.pinterest.com/pin/123456789012345678/",
+            "ted" to "https://www.ted.com/talks/al_gore_the_case_for_optimism_on_climate_change",
+            "twitch" to "https://clips.twitch.tv/GloriousPoliteKoupreyChefFrank"
         )
 
         for ((expectedId, testUrl) in testCases) {
@@ -109,15 +112,22 @@ class ProviderContractTest {
     @Test
     fun testProviderHealthMonitoring() {
         val testProviderId = "vimeo"
-        // Initially available
+        // Initially UNKNOWN as safe default before runtime validation
         val initialHealth = ProviderHealthManager.getHealth(testProviderId)
-        assertTrue(
-            "Initial health should be AVAILABLE or WORKING",
-            initialHealth == ProviderHealth.AVAILABLE || initialHealth == ProviderHealth.WORKING
+        assertEquals(
+            "Initial health should be UNKNOWN before runtime validation",
+            ProviderHealth.UNKNOWN,
+            initialHealth
         )
 
         // Record a success
         ProviderHealthManager.recordSuccess(testProviderId, 120L)
+        val verifiedHealth = ProviderHealthManager.getHealth(testProviderId)
+        assertEquals(
+            "Health after successful validation should be AVAILABLE",
+            ProviderHealth.AVAILABLE,
+            verifiedHealth
+        )
         val metrics = ProviderHealthManager.getMetrics(testProviderId)
         assertEquals(1, metrics.successCount)
         assertEquals(120L, metrics.lastLatencyMs)
@@ -157,5 +167,110 @@ class ProviderContractTest {
 
         val all = UniversalMediaEngine.getSupportedProviders()
         assertEquals(providers.size, all.size)
+    }
+
+    @Test
+    fun testProviderCapabilitiesContract() {
+        for (provider in providers) {
+            val caps = provider.capabilities
+            assertNotNull("Provider ${provider.id} capabilities must not be null", caps)
+            // Either video or audio must be supported
+            assertTrue("Provider ${provider.id} must support either video or audio", caps.video || caps.audio)
+            
+            // Truthfulness checks for specific providers
+            when (provider.id) {
+                "soundcloud" -> {
+                    assertFalse("SoundCloud must not declare video support", caps.video)
+                    assertTrue("SoundCloud must declare audio support", caps.audio)
+                    assertTrue("SoundCloud must declare playlist support", caps.playlist)
+                }
+                "tiktok" -> {
+                    assertTrue("TikTok must declare shortVideo support", caps.shortVideo)
+                    assertTrue("TikTok must declare gallery support", caps.gallery)
+                }
+                "instagram" -> {
+                    assertTrue("Instagram must declare reel support", caps.reel)
+                    assertTrue("Instagram must declare story support", caps.story)
+                }
+                "facebook" -> {
+                    assertTrue("Facebook must declare separate streams support", caps.separateVideoAudioStreams)
+                }
+                "reddit" -> {
+                    assertTrue("Reddit must declare separate streams support (DASH)", caps.separateVideoAudioStreams)
+                }
+            }
+        }
+    }
+
+    @Test
+    fun testDownloadStateMachineTransitions() {
+        // Valid transitions
+        assertTrue(org.videopocket.probe.download.DownloadState.canTransition(
+            org.videopocket.probe.download.DownloadState.QUEUED,
+            org.videopocket.probe.download.DownloadState.DOWNLOADING
+        ))
+        assertTrue(org.videopocket.probe.download.DownloadState.canTransition(
+            org.videopocket.probe.download.DownloadState.DOWNLOADING,
+            org.videopocket.probe.download.DownloadState.MERGING
+        ))
+        assertTrue(org.videopocket.probe.download.DownloadState.canTransition(
+            org.videopocket.probe.download.DownloadState.MERGING,
+            org.videopocket.probe.download.DownloadState.SAVING
+        ))
+        assertTrue(org.videopocket.probe.download.DownloadState.canTransition(
+            org.videopocket.probe.download.DownloadState.SAVING,
+            org.videopocket.probe.download.DownloadState.COMPLETED
+        ))
+
+        // Terminal state cannot transition to active states
+        assertFalse("COMPLETED must never transition to DOWNLOADING",
+            org.videopocket.probe.download.DownloadState.canTransition(
+                org.videopocket.probe.download.DownloadState.COMPLETED,
+                org.videopocket.probe.download.DownloadState.DOWNLOADING
+            )
+        )
+        assertFalse("COMPLETED must never transition to QUEUED",
+            org.videopocket.probe.download.DownloadState.canTransition(
+                org.videopocket.probe.download.DownloadState.COMPLETED,
+                org.videopocket.probe.download.DownloadState.QUEUED
+            )
+        )
+    }
+
+    @Test
+    fun testQualityPresetsDerivation() {
+        val variants = listOf(
+            MediaVariant(id = "360", quality = "360p", height = 360, format = "mp4", fileSize = 15_000_000L),
+            MediaVariant(id = "720", quality = "720p", height = 720, format = "mp4", fileSize = 45_000_000L),
+            MediaVariant(id = "1080", quality = "1080p", height = 1080, format = "mp4", fileSize = 95_000_000L),
+            MediaVariant(id = "2160", quality = "2160p", height = 2160, format = "mp4", fileSize = 350_000_000L),
+            MediaVariant(id = "audio_128", quality = "128 kbps", height = 0, format = "mp3", bitrate = 128, isAudioOnly = true),
+            MediaVariant(id = "audio_320", quality = "320 kbps", height = 0, format = "mp3", bitrate = 320, isAudioOnly = true)
+        )
+        val metadata = NormalizedMetadata(
+            id = "test_meta",
+            canonicalUrl = "https://example.com/video",
+            platform = "Test",
+            platformIcon = "public",
+            title = "Test Video",
+            variants = variants
+        )
+
+        assertEquals(2160, metadata.getBestAvailable()?.height)
+        assertEquals(1080, metadata.getBalanced()?.height)
+        assertEquals(360, metadata.getSmallestFile()?.height)
+        assertEquals(320, metadata.getBestAudio()?.bitrate)
+    }
+
+    @Test
+    fun testErrorTaxonomyAndArabicLocalization() {
+        for (errType in ResolverErrorType.values()) {
+            assertFalse("Default English message must not be blank for $errType", errType.defaultMessage.isBlank())
+            assertFalse("Default Arabic message must not be blank for $errType", errType.defaultArabic.isBlank())
+
+            val error = ResolverError(errType, "Detailed info")
+            assertEquals(errType.defaultMessage, error.userMessage(arabic = false))
+            assertEquals(errType.defaultArabic, error.userMessage(arabic = true))
+        }
     }
 }
