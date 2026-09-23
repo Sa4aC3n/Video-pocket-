@@ -111,9 +111,15 @@ class ProbeModel(application: Application) : AndroidViewModel(application) {
 
     init {
         refreshLibrary()
-        viewModelScope.launch {
-            delay(1000)
-            retryInit()
+        val cached = ProbeEngine.cachedRuntime
+        if (cached != null) {
+            runtime = cached
+            ready = true
+        } else {
+            viewModelScope.launch {
+                delay(300)
+                retryInit()
+            }
         }
     }
 
@@ -152,6 +158,12 @@ class ProbeModel(application: Application) : AndroidViewModel(application) {
 
     fun retryInit() {
         if (busy || ready) return
+        val cached = ProbeEngine.cachedRuntime
+        if (cached != null) {
+            runtime = cached
+            ready = true
+            return
+        }
         busy = true
         problem = null
         initErrorDetail = null

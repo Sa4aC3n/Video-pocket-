@@ -41,38 +41,44 @@ class ProbeEngine(private val context: Context) : MediaInspector, MediaDownloade
     
 
     @Synchronized fun initialize(): JSONObject {
-        FFmpeg.getInstance().init(context)
-        engine.init(context)
-        val targetFile = File(context.noBackupFilesDir, "youtubedl-android/yt-dlp/yt-dlp")
-        if (!targetFile.exists()) {
-            targetFile.parentFile?.mkdirs()
-            context.resources.openRawResource(R.raw.ytdlp).use { input ->
-                targetFile.outputStream().use { output ->
-                    input.copyTo(output)
+        cachedInitResult?.let { return it }
+        return synchronized(initLock) {
+            cachedInitResult?.let { return it }
+            FFmpeg.getInstance().init(context)
+            engine.init(context)
+            val targetFile = File(context.noBackupFilesDir, "youtubedl-android/yt-dlp/yt-dlp")
+            if (!targetFile.exists()) {
+                targetFile.parentFile?.mkdirs()
+                context.resources.openRawResource(R.raw.ytdlp).use { input ->
+                    targetFile.outputStream().use { output ->
+                        input.copyTo(output)
+                    }
                 }
             }
-        }
-        for (name in listOf("libpython.so", "libffmpeg.so", "libqjs.so")) {
-            val f = File(context.applicationInfo.nativeLibraryDir, name)
-            if (!f.exists()) throw ProbeFailure(Problem.ENGINE, "Missing native binary: $name in ${context.applicationInfo.nativeLibraryDir}")
-        }
-        workRoot.mkdirs()
-        try {
-            Os.setenv("PYTHONDONTWRITEBYTECODE", "1", true)
-            Os.setenv("PYTHONNOUSERSITE", "1", true)
-            val pythonHome = File(context.noBackupFilesDir, "youtubedl-android/packages/python/usr").absolutePath
-            val pythonLib = File(context.noBackupFilesDir, "youtubedl-android/packages/python/usr/lib/python3.12").absolutePath
-            val sitePackages = File(context.noBackupFilesDir, "youtubedl-android/packages/python/usr/lib/python3.12/site-packages").absolutePath
-            Os.setenv("PYTHONPATH", "$pythonLib:$sitePackages", true)
-            Os.setenv("PYTHONHOME", pythonHome, true)
-        } catch (_: Throwable) {}
+            for (name in listOf("libpython.so", "libffmpeg.so", "libqjs.so")) {
+                val f = File(context.applicationInfo.nativeLibraryDir, name)
+                if (!f.exists()) throw ProbeFailure(Problem.ENGINE, "Missing native binary: $name in ${context.applicationInfo.nativeLibraryDir}")
+            }
+            workRoot.mkdirs()
+            try {
+                Os.setenv("PYTHONDONTWRITEBYTECODE", "1", true)
+                Os.setenv("PYTHONNOUSERSITE", "1", true)
+                val pythonHome = File(context.noBackupFilesDir, "youtubedl-android/packages/python/usr").absolutePath
+                val pythonLib = File(context.noBackupFilesDir, "youtubedl-android/packages/python/usr/lib/python3.12").absolutePath
+                val sitePackages = File(context.noBackupFilesDir, "youtubedl-android/packages/python/usr/lib/python3.12/site-packages").absolutePath
+                Os.setenv("PYTHONPATH", "$pythonLib:$sitePackages", true)
+                Os.setenv("PYTHONHOME", pythonHome, true)
+            } catch (_: Throwable) {}
 
-        val ver = "2026.08.19"
-        return JSONObject().put("androidApi", Build.VERSION.SDK_INT)
-            .put("supportedAbis", Build.SUPPORTED_ABIS.joinToString(","))
-            .put("pageSize", Os.sysconf(OsConstants._SC_PAGESIZE))
-            .put("wrapper", "0.18.1").put("ytDlp", ver)
-            .put("quickJsPresent", true)
+            val ver = "2026.08.19"
+            val result = JSONObject().put("androidApi", Build.VERSION.SDK_INT)
+                .put("supportedAbis", Build.SUPPORTED_ABIS.joinToString(","))
+                .put("pageSize", Os.sysconf(OsConstants._SC_PAGESIZE))
+                .put("wrapper", "0.18.1").put("ytDlp", ver)
+                .put("quickJsPresent", true)
+            cachedInitResult = result
+            result
+        }
     }
 
     private fun request(url: String, allowPlaylist: Boolean = false) = YoutubeDLRequest(LinkPolicy.validate(url))
@@ -424,6 +430,12 @@ class ProbeEngine(private val context: Context) : MediaInspector, MediaDownloade
     }
 
     companion object {
+        @Volatile private var cachedInitResult: JSONObject? = null
+        private val initLock = Any()
+
+        val isInitialized: Boolean get() = cachedInitResult != null
+        val cachedRuntime: JSONObject? get() = cachedInitResult
+
         fun classify(error: Throwable): Problem {
             if (error is ProbeFailure) return error.problem
             val message = error.message.orEmpty().lowercase()
