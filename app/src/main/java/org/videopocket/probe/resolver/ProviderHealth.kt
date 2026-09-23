@@ -10,13 +10,15 @@ enum class ProviderHealth(val label: String, val arabicLabel: String) {
     TEMPORARILY_BROKEN("Temporarily Unavailable", "غير متاح مؤقتاً"),
     TEMPORARILY_UNAVAILABLE("Temporarily Unavailable", "غير متاح مؤقتاً"),
     DISABLED("Disabled", "معطل"),
-    UNKNOWN("Operational", "جاهز للعمل")
+    UNKNOWN("Unknown / Not Tested", "غير مختبر")
 }
 
 data class ProviderMetrics(
     val providerId: String,
     var successCount: Int = 0,
+    var fallbackSuccessCount: Int = 0,
     var failureCount: Int = 0,
+    var consecutiveFailures: Int = 0,
     var contentSpecificErrorCount: Int = 0,
     var preventedLoginRequiredCount: Int = 0,
     var lastLatencyMs: Long = 0,
@@ -38,6 +40,7 @@ object ProviderHealthManager {
     ) {
         val metrics = metricsMap.getOrPut(providerId) { ProviderMetrics(providerId) }
         metrics.successCount++
+        metrics.consecutiveFailures = 0
         metrics.lastLatencyMs = latencyMs
         metrics.lastStrategy = strategy
         metrics.lastClassification = ResolutionClassification.PUBLIC_RESOLVED
@@ -48,17 +51,34 @@ object ProviderHealthManager {
     }
 
     @Synchronized
+    fun recordFallbackSuccess(
+        providerId: String,
+        latencyMs: Long,
+        strategy: ResolutionStrategy
+    ) {
+        val metrics = metricsMap.getOrPut(providerId) { ProviderMetrics(providerId) }
+        metrics.successCount++
+        metrics.fallbackSuccessCount++
+        metrics.consecutiveFailures = 0
+        metrics.lastLatencyMs = latencyMs
+        metrics.lastStrategy = strategy
+        metrics.lastClassification = ResolutionClassification.PUBLIC_RESOLVED
+        metrics.strategyCounts[strategy] = (metrics.strategyCounts[strategy] ?: 0) + 1
+    }
+
+    @Synchronized
     fun recordPreventedLoginRequired(
         providerId: String,
         strategy: ResolutionStrategy,
         latencyMs: Long
     ) {
-        recordSuccess(
+        recordFallbackSuccess(
             providerId = providerId,
             latencyMs = latencyMs,
-            strategy = strategy,
-            preventedLoginRequired = true
+            strategy = strategy
         )
+        val metrics = metricsMap.getOrPut(providerId) { ProviderMetrics(providerId) }
+        metrics.preventedLoginRequiredCount++
     }
 
     @Synchronized
@@ -66,7 +86,6 @@ object ProviderHealthManager {
         val metrics = metricsMap.getOrPut(providerId) { ProviderMetrics(providerId) }
         metrics.lastError = errorType
         metrics.lastClassification = errorType.toClassification()
-
         // Content-specific errors (such as individual video login requirements,
         // private accounts, or geo-restrictions) are property of that specific item,
         // NOT a defect of the provider itself.
@@ -84,6 +103,7 @@ object ProviderHealthManager {
             metrics.contentSpecificErrorCount++
         } else {
             metrics.failureCount++
+            metrics.consecutiveFailures++
         }
     }
 
@@ -95,14 +115,14 @@ object ProviderHealthManager {
         val metrics = metricsMap[providerId] ?: return ProviderHealth.UNKNOWN
         val totalActionable = metrics.successCount + metrics.failureCount
         if (totalActionable == 0) {
-            // If the provider has only encountered content-specific errors (like an individual login wall),
-            // it is still fully operational for public media.
-            return if (metrics.contentSpecificErrorCount > 0) ProviderHealth.AVAILABLE else ProviderHealth.UNKNOWN
+            return ProviderHealth.UNKNOWN
         }
         val failRatio = metrics.failureCount.toFloat() / totalActionable.toFloat()
         return when {
             metrics.lastError == ResolverErrorType.RATE_LIMITED -> ProviderHealth.TEMPORARILY_BROKEN
-            failRatio > 0.5f -> ProviderHealth.DEGRADED
+            metrics.consecutiveFailures >= 3 -> ProviderHealth.TEMPORARILY_BROKEN
+            metrics.fallbackSuccessCount > 0 && metrics.successCount == metrics.fallbackSuccessCount -> ProviderHealth.DEGRADED
+            failRatio > 0.3f -> ProviderHealth.DEGRADED
             metrics.successCount > 0 -> ProviderHealth.AVAILABLE
             else -> ProviderHealth.TEMPORARILY_BROKEN
         }

@@ -115,10 +115,28 @@ class ProbeModel(application: Application) : AndroidViewModel(application) {
         if (cached != null) {
             runtime = cached
             ready = true
-        } else {
-            viewModelScope.launch {
-                delay(300)
-                retryInit()
+        }
+    }
+
+    suspend fun ensureEngineReady(): Boolean {
+        if (ready || ProbeEngine.isReady) {
+            if (!ready && ProbeEngine.cachedRuntime != null) {
+                runtime = ProbeEngine.cachedRuntime!!
+                ready = true
+            }
+            return true
+        }
+        currentStageText = "Initializing engine..."
+        return withContext(Dispatchers.IO) {
+            try {
+                runtime = engine.initialize()
+                ready = true
+                true
+            } catch (e: Exception) {
+                problem = ProbeEngine.classify(e)
+                initErrorDetail = e.message ?: e.javaClass.simpleName
+                record(ProbeResult(ProbeAction.INSPECT, 0, 0, null, false, "Initialization: ${problem!!.name} - $initErrorDetail"))
+                false
             }
         }
     }
@@ -182,10 +200,15 @@ class ProbeModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun inspect(url: String, forcePlaylist: Boolean = false) {
-        if (busy || !ready) return
+        if (busy) return
         busy = true; problem = null; info = null; normalizedMetadata = null; resolverError = null; inspectedUrl = null
         currentStageText = "Inspecting link..."
         viewModelScope.launch {
+            if (!ensureEngineReady()) {
+                busy = false
+                currentStageText = ""
+                return@launch
+            }
             val started = System.nanoTime()
             try {
                 val valid = LinkPolicy.validate(url)
@@ -207,10 +230,12 @@ class ProbeModel(application: Application) : AndroidViewModel(application) {
                             ResolverErrorType.UNSUPPORTED_SOURCE -> Problem.UNSUPPORTED
                             ResolverErrorType.MEDIA_NOT_FOUND, ResolverErrorType.PUBLIC_MEDIA_UNAVAILABLE -> Problem.REMOVED
                             ResolverErrorType.PRIVATE_MEDIA, ResolverErrorType.LOGIN_REQUIRED -> Problem.LOGIN_REQUIRED
-                            ResolverErrorType.GEO_RESTRICTED, ResolverErrorType.RATE_LIMITED -> Problem.RESTRICTED
+                            ResolverErrorType.GEO_RESTRICTED, ResolverErrorType.RATE_LIMITED, ResolverErrorType.ANTI_BOT_CHALLENGE -> Problem.RESTRICTED
                             ResolverErrorType.DRM_PROTECTED -> Problem.UNSUPPORTED
-                            ResolverErrorType.NETWORK_ERROR -> Problem.NETWORK
+                            ResolverErrorType.NETWORK_ERROR, ResolverErrorType.TIMEOUT -> Problem.NETWORK
+                            ResolverErrorType.CONVERSION_FAILED -> Problem.CONVERSION
                             ResolverErrorType.INSUFFICIENT_STORAGE -> Problem.SPACE
+                            ResolverErrorType.CANCELLED -> Problem.CANCELED
                             else -> Problem.ENGINE
                         }
                         record(ProbeResult(ProbeAction.INSPECT, (System.nanoTime()-started)/1_000_000, 0, null, false, problem!!.name))
@@ -833,10 +858,22 @@ fun HomeScreen(
                     HorizontalDivider()
 
                     if (media.isPlaylist) {
-                        Text(t("Video Quality for Playlist:", "دقة الفيديو لقائمة التشغيل:"), fontWeight = FontWeight.SemiBold)
+                        Text(t("Target Quality (Per Item):", "الجودة المستهدفة (لكل عنصر):"), fontWeight = FontWeight.SemiBold)
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            listOf(1080, 720, 480, 360).forEach { h ->
-                                FilterChip(selected = height == h, onClick = { height = h }, enabled = !model.busy, label = { Text("${h}p") })
+                            FilterChip(
+                                selected = height == 0,
+                                onClick = { height = 0 },
+                                enabled = !model.busy,
+                                label = { Text(t("Best Available", "أفضل جودة")) }
+                            )
+                            val playlistHeights = media.heights.ifEmpty { listOf(1080, 720, 480) }
+                            playlistHeights.forEach { h ->
+                                FilterChip(
+                                    selected = height == h,
+                                    onClick = { height = h },
+                                    enabled = !model.busy,
+                                    label = { Text("${h}p Max") }
+                                )
                             }
                         }
                         Button(

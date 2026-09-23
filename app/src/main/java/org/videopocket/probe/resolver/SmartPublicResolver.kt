@@ -55,6 +55,8 @@ object SmartPublicResolver {
      * Safely normalizes and expands short URLs to their canonical destination.
      * Enforces strict redirect limits (up to maxRedirects) and NEVER passes cookies or auth tokens.
      */
+    suspend fun expandCanonicalUrl(url: String, maxRedirects: Int = 5): String = expandShortUrl(url, maxRedirects)
+
     suspend fun expandShortUrl(url: String, maxRedirects: Int = 5): String = withContext(Dispatchers.IO) {
         var currentUrl = url.trim()
         var redirects = 0
@@ -110,8 +112,10 @@ object SmartPublicResolver {
         data class Accessible(val html: String, val finalUrl: String) : PublicPageInspection()
         object NotFound : PublicPageInspection()
         object RateLimited : PublicPageInspection()
+        object AntiBotChallenge : PublicPageInspection()
         object GeoRestricted : PublicPageInspection()
         object DrmProtected : PublicPageInspection()
+        data class AccessDenied(val reason: String? = null) : PublicPageInspection()
         data class LoginRequired(val isTrulyPrivate: Boolean, val reason: String? = null) : PublicPageInspection()
         data class Error(val message: String) : PublicPageInspection()
     }
@@ -141,18 +145,27 @@ object SmartPublicResolver {
             when (code) {
                 404, 410 -> return@withContext PublicPageInspection.NotFound
                 429 -> return@withContext PublicPageInspection.RateLimited
-                401, 403 -> {
+                401 -> return@withContext PublicPageInspection.LoginRequired(isTrulyPrivate = false, reason = "HTTP 401 Unauthorized")
+                403 -> {
                     val errorBody = try {
                         conn.errorStream?.bufferedReader()?.use { it.readText().take(4096).lowercase() }.orEmpty()
                     } catch (_: Exception) { "" }
 
                     return@withContext when {
-                        "geo" in errorBody || "country" in errorBody || "region" in errorBody || "not available" in errorBody ->
+                        "captcha" in errorBody || "challenge" in errorBody || "cloudflare" in errorBody ||
+                        "cf-ray" in errorBody || "robot" in errorBody || "just a moment" in errorBody ||
+                        "verify you are human" in errorBody || "ddos-guard" in errorBody ->
+                            PublicPageInspection.AntiBotChallenge
+                        "rate limit" in errorBody || "too many requests" in errorBody ->
+                            PublicPageInspection.RateLimited
+                        "geo" in errorBody || "country" in errorBody || "region" in errorBody || "not available in your" in errorBody ->
                             PublicPageInspection.GeoRestricted
                         "drm" in errorBody || "widevine" in errorBody ->
                             PublicPageInspection.DrmProtected
+                        "login" in errorBody || "sign in" in errorBody || "log in" in errorBody || "auth_required" in errorBody || "authentication required" in errorBody ->
+                            PublicPageInspection.LoginRequired(isTrulyPrivate = false, reason = "HTTP 403 Auth Required")
                         else ->
-                            PublicPageInspection.LoginRequired(isTrulyPrivate = true, reason = "HTTP $code")
+                            PublicPageInspection.AccessDenied(reason = "HTTP 403 Forbidden (Non-auth)")
                     }
                 }
             }
@@ -172,6 +185,14 @@ object SmartPublicResolver {
             }
             val html = htmlBuilder.toString()
             val lowerHtml = html.lowercase()
+
+            // Check if page returned an anti-bot challenge
+            val isBotChallenge = lowerHtml.contains("cf-ray") || lowerHtml.contains("just a moment...") ||
+                    lowerHtml.contains("attention required! | cloudflare") ||
+                    lowerHtml.contains("verify you are human") || lowerHtml.contains("confirm you're not a bot")
+            if (isBotChallenge) {
+                return@withContext PublicPageInspection.AntiBotChallenge
+            }
 
             // Check if page redirected to a dedicated login checkpoint or explicitly states private account
             val finalLower = finalUrl.lowercase()
@@ -480,6 +501,24 @@ object SmartPublicResolver {
                     )
                 )
             }
+            is PublicPageInspection.AntiBotChallenge -> {
+                return MediaResolverResult.Failure(
+                    ResolverError(
+                        type = ResolverErrorType.ANTI_BOT_CHALLENGE,
+                        detail = "Source platform anti-bot challenge detected.",
+                        classification = ResolutionClassification.RATE_LIMITED
+                    )
+                )
+            }
+            is PublicPageInspection.AccessDenied -> {
+                return MediaResolverResult.Failure(
+                    ResolverError(
+                        type = ResolverErrorType.PROVIDER_TEMPORARILY_UNAVAILABLE,
+                        detail = inspection.reason ?: "HTTP 403 Forbidden without authentication requirement.",
+                        classification = ResolutionClassification.TEMPORARILY_UNAVAILABLE
+                    )
+                )
+            }
             is PublicPageInspection.LoginRequired -> {
                 return MediaResolverResult.Failure(
                     ResolverError(
@@ -561,11 +600,10 @@ object SmartPublicResolver {
                                 isAudioOnly = declarations.audioUrl != null && declarations.videoUrl == null
                             ),
                             MediaVariant(
-                                id = "public_audio_192",
-                                quality = "192 kbps (MP3 Audio)",
+                                id = "public_audio",
+                                quality = "Original Audio",
                                 height = 0,
-                                format = "mp3",
-                                bitrate = 192,
+                                format = if (isManifest) "m3u8" else "m4a",
                                 videoUrl = declarations.audioUrl ?: streamUrl,
                                 isAudioOnly = true
                             )

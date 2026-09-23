@@ -64,25 +64,54 @@ enum class ResolverErrorType(val defaultMessage: String, val defaultArabic: Stri
     MERGE_ERROR("Failed to combine video and audio streams.", "فشل في دمج مساري الفيديو والصوت."),
     INSUFFICIENT_STORAGE("Insufficient device storage to process this media.", "مساحة التخزين غير كافية لمعالجة هذه الوسائط."),
     CANCELLED("Operation was cancelled by user.", "تم إلغاء العملية بواسطة المستخدم."),
-    UNKNOWN("An unexpected error occurred while analyzing the link.", "حدث خطأ غير متوقع أثناء فحص الرابط.")
+    ANTI_BOT_CHALLENGE("The source temporarily blocked automated access. Try again later.", "المصدر أوقف الوصول التلقائي مؤقتاً. حاول مرة أخرى لاحقاً."),
+    TIMEOUT("Connection to the media source timed out.", "انتهت مهلة الاتصال بالمصدر."),
+    PARSER_FAILURE("Failed to parse media formats from source page.", "فشل تحليل صيغ الوسائط من صفحة المصدر."),
+    LIVE_MEDIA_UNSUPPORTED("Live streams and upcoming premieres are not downloadable.", "البث المباشر والعروض الأولى القادمة غير قابلة للتنزيل."),
+    PLAYLIST_UNSUPPORTED("This playlist cannot be extracted.", "لا يمكن استخراج قائمة التشغيل هذه."),
+    CONVERSION_FAILED("Failed to convert or process media format.", "فشل تحويل صيغة الوسائط."),
+    UNKNOWN("An unexpected error occurred while analyzing the link.", "حدث خطأ غير متوقع أثناء فحص الرابط.");
+
+    companion object {
+        val PRIVATE_CONTENT = PRIVATE_MEDIA
+        val STORAGE_ERROR = INSUFFICIENT_STORAGE
+        val UNSUPPORTED_MEDIA = NO_VARIANTS
+        val EXTRACTOR_FAILURE = EXTRACTOR_OUTDATED
+        val PROVIDER_TEMPORARILY_UNAVAILABLE = TEMPORARILY_UNAVAILABLE
+    }
 }
 
 fun ResolverErrorType.toClassification(): ResolutionClassification = when (this) {
     ResolverErrorType.LOGIN_REQUIRED -> ResolutionClassification.LOGIN_REQUIRED
     ResolverErrorType.PRIVATE_MEDIA -> ResolutionClassification.PRIVATE_MEDIA
-    ResolverErrorType.PUBLIC_MEDIA_UNAVAILABLE, ResolverErrorType.MEDIA_NOT_FOUND, ResolverErrorType.NO_VARIANTS -> ResolutionClassification.PUBLIC_MEDIA_UNAVAILABLE
+    ResolverErrorType.PUBLIC_MEDIA_UNAVAILABLE, ResolverErrorType.MEDIA_NOT_FOUND, ResolverErrorType.NO_VARIANTS, ResolverErrorType.LIVE_MEDIA_UNSUPPORTED, ResolverErrorType.PLAYLIST_UNSUPPORTED -> ResolutionClassification.PUBLIC_MEDIA_UNAVAILABLE
     ResolverErrorType.GEO_RESTRICTED -> ResolutionClassification.GEO_RESTRICTED
-    ResolverErrorType.RATE_LIMITED -> ResolutionClassification.RATE_LIMITED
+    ResolverErrorType.RATE_LIMITED, ResolverErrorType.ANTI_BOT_CHALLENGE -> ResolutionClassification.RATE_LIMITED
     ResolverErrorType.DRM_PROTECTED -> ResolutionClassification.DRM_PROTECTED
-    ResolverErrorType.EXTRACTOR_OUTDATED, ResolverErrorType.PROVIDER_CHANGED -> ResolutionClassification.EXTRACTOR_OUTDATED
-    ResolverErrorType.TEMPORARILY_UNAVAILABLE, ResolverErrorType.PROVIDER_UNAVAILABLE, ResolverErrorType.NETWORK_ERROR -> ResolutionClassification.TEMPORARILY_UNAVAILABLE
+    ResolverErrorType.EXTRACTOR_OUTDATED, ResolverErrorType.PROVIDER_CHANGED, ResolverErrorType.PARSER_FAILURE -> ResolutionClassification.EXTRACTOR_OUTDATED
+    ResolverErrorType.TEMPORARILY_UNAVAILABLE, ResolverErrorType.PROVIDER_UNAVAILABLE, ResolverErrorType.NETWORK_ERROR, ResolverErrorType.TIMEOUT -> ResolutionClassification.TEMPORARILY_UNAVAILABLE
     else -> ResolutionClassification.TEMPORARILY_UNAVAILABLE
 }
+
+data class ResolutionAttempt(
+    val strategy: ResolutionStrategy,
+    val providerId: String,
+    val success: Boolean,
+    val errorType: ResolverErrorType? = null,
+    val durationMs: Long = 0L
+)
+
+data class ResolutionTrace(
+    val attempts: List<ResolutionAttempt> = emptyList(),
+    val finalStrategy: ResolutionStrategy? = null,
+    val finalClassification: ResolutionClassification
+)
 
 data class ResolverError(
     val type: ResolverErrorType,
     val detail: String? = null,
-    val classification: ResolutionClassification = type.toClassification()
+    val classification: ResolutionClassification = type.toClassification(),
+    val trace: ResolutionTrace? = null
 ) {
     fun userMessage(arabic: Boolean): String {
         return if (arabic) type.defaultArabic else type.defaultMessage
@@ -149,7 +178,8 @@ data class NormalizedMetadata(
     val rawInfo: MediaInfo? = null,
     val resolutionStrategy: ResolutionStrategy = ResolutionStrategy.DEDICATED_EXTRACTOR,
     val classification: ResolutionClassification = ResolutionClassification.PUBLIC_RESOLVED,
-    val resolvedViaSmartPublicResolution: Boolean = false
+    val resolvedViaSmartPublicResolution: Boolean = false,
+    val trace: ResolutionTrace? = null
 ) {
     val heights: List<Int> get() = variants
         .filter { !it.isAudioOnly && it.height in 1..4320 }
@@ -190,5 +220,11 @@ sealed class MediaResolverResult {
         get() = when (this) {
             is Success -> metadata.classification
             is Failure -> error.classification
+        }
+
+    val trace: ResolutionTrace?
+        get() = when (this) {
+            is Success -> metadata.trace
+            is Failure -> error.trace
         }
 }

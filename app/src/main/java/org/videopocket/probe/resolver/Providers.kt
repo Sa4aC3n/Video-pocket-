@@ -112,70 +112,80 @@ abstract class BaseMediaProvider : MediaProvider {
         val mediaType = detectMediaType(url, info)
         val variants = mutableListOf<MediaVariant>()
 
-        // 1. Map video formats
-        val heights = info.formats.filter { it.video && it.height > 0 }.map { it.height }.distinct().sortedDescending()
-        for (h in heights) {
-            val tier = QualityTier.fromHeight(h)
-            val videoOnly = info.formats.firstOrNull { it.video && it.height == h && !it.audio }
-            val combined = info.formats.firstOrNull { it.video && it.height == h && it.audio }
-            val chosen = combined ?: videoOnly
-            if (chosen != null) {
-                variants.add(
-                    MediaVariant(
-                        id = chosen.id,
-                        quality = "${h}p • ${tier.category}",
-                        width = 0,
-                        height = h,
-                        format = chosen.extension.ifBlank { "mp4" },
-                        fileSize = chosen.bytes,
-                        videoUrl = chosen.url,
-                        requiresMerge = chosen.video && !chosen.audio,
-                        isAudioOnly = false
-                    )
-                )
-            }
-        }
-
-        // 2. Map audio formats
-        val audioFormats = info.formats.filter { it.audio && !it.video }
-        if (audioFormats.isNotEmpty()) {
-            val bestAudio = audioFormats.maxByOrNull { it.bytes ?: 0 }
+        if (info.isPlaylist) {
             variants.add(
                 MediaVariant(
-                    id = bestAudio?.id ?: "mp3_320",
-                    quality = "320 kbps (High)",
+                    id = "best",
+                    quality = "Best Available (Per Item)",
                     height = 0,
-                    format = "mp3",
-                    bitrate = 320,
-                    fileSize = bestAudio?.bytes,
-                    isAudioOnly = true
+                    format = "mp4",
+                    isAudioOnly = false
                 )
             )
             variants.add(
                 MediaVariant(
-                    id = "mp3_192",
-                    quality = "192 kbps (Standard)",
+                    id = "best_audio",
+                    quality = "Audio Only (Per Item)",
                     height = 0,
                     format = "mp3",
-                    bitrate = 192,
-                    fileSize = bestAudio?.bytes?.let { (it * 0.6).toLong() },
-                    isAudioOnly = true
-                )
-            )
-            variants.add(
-                MediaVariant(
-                    id = "mp3_128",
-                    quality = "128 kbps (Data Saver)",
-                    height = 0,
-                    format = "mp3",
-                    bitrate = 128,
-                    fileSize = bestAudio?.bytes?.let { (it * 0.4).toLong() },
                     isAudioOnly = true
                 )
             )
         } else {
-            // Provide default audio extractions
-            variants.add(MediaVariant(id = "mp3_192", quality = "192 kbps (MP3)", height = 0, format = "mp3", bitrate = 192, isAudioOnly = true))
+            // 1. Map video formats
+            val heights = info.formats.filter { it.video && it.height > 0 }.map { it.height }.distinct().sortedDescending()
+            for (h in heights) {
+                val tier = QualityTier.fromHeight(h)
+                val videoOnly = info.formats.firstOrNull { it.video && it.height == h && !it.audio }
+                val combined = info.formats.firstOrNull { it.video && it.height == h && it.audio }
+                val chosen = combined ?: videoOnly
+                if (chosen != null) {
+                    variants.add(
+                        MediaVariant(
+                            id = chosen.id,
+                            quality = "${h}p • ${tier.category}",
+                            width = 0,
+                            height = h,
+                            format = chosen.extension.ifBlank { "mp4" },
+                            fileSize = chosen.bytes,
+                            videoUrl = chosen.url,
+                            requiresMerge = chosen.video && !chosen.audio,
+                            isAudioOnly = false
+                        )
+                    )
+                }
+            }
+
+            // 2. Map audio formats truthfully
+            val audioFormats = info.formats.filter { it.audio && !it.video }
+            if (audioFormats.isNotEmpty()) {
+                val bestAudio = audioFormats.maxByOrNull { it.bytes ?: 0 }
+                val realFmt = bestAudio?.extension?.ifBlank { "m4a" } ?: "m4a"
+                variants.add(
+                    MediaVariant(
+                        id = bestAudio?.id ?: "original_audio",
+                        quality = "Original Audio (${realFmt.uppercase()})",
+                        height = 0,
+                        format = realFmt,
+                        bitrate = 0,
+                        fileSize = bestAudio?.bytes,
+                        videoUrl = bestAudio?.url,
+                        isAudioOnly = true
+                    )
+                )
+            }
+            // Supported output conversion target (with un-faked null file size)
+            variants.add(
+                MediaVariant(
+                    id = "mp3_converted",
+                    quality = "MP3 Audio (Converted)",
+                    height = 0,
+                    format = "mp3",
+                    bitrate = 192,
+                    fileSize = null,
+                    isAudioOnly = true
+                )
+            )
         }
 
         // 3. Map subtitles

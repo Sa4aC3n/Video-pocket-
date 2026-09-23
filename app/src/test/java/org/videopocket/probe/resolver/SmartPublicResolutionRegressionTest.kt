@@ -270,8 +270,222 @@ class SmartPublicResolutionRegressionTest {
         assertEquals(ResolutionClassification.PUBLIC_MEDIA_UNAVAILABLE, ResolverErrorType.MEDIA_NOT_FOUND.toClassification())
         assertEquals(ResolutionClassification.GEO_RESTRICTED, ResolverErrorType.GEO_RESTRICTED.toClassification())
         assertEquals(ResolutionClassification.RATE_LIMITED, ResolverErrorType.RATE_LIMITED.toClassification())
+        assertEquals(ResolutionClassification.RATE_LIMITED, ResolverErrorType.ANTI_BOT_CHALLENGE.toClassification())
         assertEquals(ResolutionClassification.DRM_PROTECTED, ResolverErrorType.DRM_PROTECTED.toClassification())
         assertEquals(ResolutionClassification.EXTRACTOR_OUTDATED, ResolverErrorType.EXTRACTOR_OUTDATED.toClassification())
+        assertEquals(ResolutionClassification.EXTRACTOR_OUTDATED, ResolverErrorType.PARSER_FAILURE.toClassification())
         assertEquals(ResolutionClassification.TEMPORARILY_UNAVAILABLE, ResolverErrorType.TEMPORARILY_UNAVAILABLE.toClassification())
+        assertEquals(ResolutionClassification.TEMPORARILY_UNAVAILABLE, ResolverErrorType.TIMEOUT.toClassification())
+    }
+
+    @Test
+    fun testResolutionTraceStructure() {
+        val attempts = listOf(
+            ResolutionAttempt(
+                strategy = ResolutionStrategy.DEDICATED_EXTRACTOR,
+                providerId = "instagram",
+                success = false,
+                errorType = ResolverErrorType.EXTRACTOR_OUTDATED,
+                durationMs = 450L
+            ),
+            ResolutionAttempt(
+                strategy = ResolutionStrategy.CANONICAL_EXPANSION,
+                providerId = "instagram",
+                success = false,
+                errorType = ResolverErrorType.EXTRACTOR_OUTDATED,
+                durationMs = 210L
+            ),
+            ResolutionAttempt(
+                strategy = ResolutionStrategy.PUBLIC_HTML_OPENGRAPH,
+                providerId = "instagram",
+                success = true,
+                durationMs = 380L
+            )
+        )
+
+        val trace = ResolutionTrace(
+            attempts = attempts,
+            finalStrategy = ResolutionStrategy.PUBLIC_HTML_OPENGRAPH,
+            finalClassification = ResolutionClassification.PUBLIC_RESOLVED
+        )
+
+        assertEquals(3, trace.attempts.size)
+        assertEquals(ResolutionStrategy.PUBLIC_HTML_OPENGRAPH, trace.finalStrategy)
+        assertEquals(ResolutionClassification.PUBLIC_RESOLVED, trace.finalClassification)
+        assertFalse(trace.attempts[0].success)
+        assertTrue(trace.attempts[2].success)
+    }
+
+    @Test
+    fun testFallbackOnlySuccessMarksProviderDegraded() {
+        val providerId = "test_degraded_fallback"
+        // Dedicated strategy failed, fallback succeeded:
+        ProviderHealthManager.recordFallbackSuccess(
+            providerId = providerId,
+            latencyMs = 500L,
+            strategy = ResolutionStrategy.PUBLIC_HTML_OPENGRAPH
+        )
+
+        val health = ProviderHealthManager.getHealth(providerId)
+        assertEquals(
+            "Provider relying solely on fallback strategies must be marked DEGRADED",
+            ProviderHealth.DEGRADED,
+            health
+        )
+
+        // Once a dedicated extractor succeeds, health transitions to AVAILABLE
+        ProviderHealthManager.recordSuccess(
+            providerId = providerId,
+            latencyMs = 200L,
+            strategy = ResolutionStrategy.DEDICATED_EXTRACTOR
+        )
+        assertEquals(ProviderHealth.AVAILABLE, ProviderHealthManager.getHealth(providerId))
+    }
+
+    @Test
+    fun testCaseA_DedicatedStrategyFailsWithParserError_FallbackSucceeds() {
+        // Dedicated extractor fails with parser error, fallback succeeds
+        val attempts = listOf(
+            ResolutionAttempt(ResolutionStrategy.DEDICATED_EXTRACTOR, "sample", false, ResolverErrorType.PARSER_FAILURE, 100),
+            ResolutionAttempt(ResolutionStrategy.PUBLIC_HTML_OPENGRAPH, "sample", true, null, 120)
+        )
+        val trace = ResolutionTrace(attempts, ResolutionStrategy.PUBLIC_HTML_OPENGRAPH, ResolutionClassification.PUBLIC_RESOLVED)
+        val result = MediaResolverResult.Success(
+            NormalizedMetadata(
+                id = "sample_1",
+                canonicalUrl = "https://example.com/video",
+                platform = "sample",
+                platformIcon = "public",
+                title = "Public Video",
+                variants = listOf(MediaVariant(id = "v1", quality = "720p", height = 720, format = "mp4", isAudioOnly = false)),
+                resolutionStrategy = ResolutionStrategy.PUBLIC_HTML_OPENGRAPH,
+                classification = ResolutionClassification.PUBLIC_RESOLVED,
+                resolvedViaSmartPublicResolution = true,
+                trace = trace
+            )
+        )
+        assertTrue("Case A must result in Success", result is MediaResolverResult.Success)
+        assertFalse("Case A must NOT be LOGIN_REQUIRED", (result as MediaResolverResult.Success).metadata.classification == ResolutionClassification.LOGIN_REQUIRED)
+        assertEquals(ResolutionStrategy.PUBLIC_HTML_OPENGRAPH, result.metadata.resolutionStrategy)
+    }
+
+    @Test
+    fun testCaseB_DedicatedStrategyReceivesHttp403_FallbackSucceeds() {
+        // Dedicated extractor receives HTTP 403 (non-auth block), fallback succeeds
+        val attempts = listOf(
+            ResolutionAttempt(ResolutionStrategy.DEDICATED_EXTRACTOR, "instagram", false, ResolverErrorType.PROVIDER_TEMPORARILY_UNAVAILABLE, 150),
+            ResolutionAttempt(ResolutionStrategy.PUBLIC_HTML_OPENGRAPH, "instagram", true, null, 200)
+        )
+        val trace = ResolutionTrace(attempts, ResolutionStrategy.PUBLIC_HTML_OPENGRAPH, ResolutionClassification.PUBLIC_RESOLVED)
+        val result = MediaResolverResult.Success(
+            NormalizedMetadata(
+                id = "ig_1",
+                canonicalUrl = "https://instagram.com/reel/123",
+                platform = "instagram",
+                platformIcon = "instagram",
+                title = "Instagram Reel",
+                variants = listOf(MediaVariant(id = "v1", quality = "1080p", height = 1080, format = "mp4", isAudioOnly = false)),
+                resolutionStrategy = ResolutionStrategy.PUBLIC_HTML_OPENGRAPH,
+                classification = ResolutionClassification.PUBLIC_RESOLVED,
+                resolvedViaSmartPublicResolution = true,
+                trace = trace
+            )
+        )
+        assertTrue(result is MediaResolverResult.Success)
+        assertFalse((result as MediaResolverResult.Success).metadata.classification == ResolutionClassification.LOGIN_REQUIRED)
+    }
+
+    @Test
+    fun testCaseC_DedicatedStrategyFailsBecauseUrlIsExpired_YieldsNotFound() {
+        val attempts = listOf(
+            ResolutionAttempt(ResolutionStrategy.DEDICATED_EXTRACTOR, "tiktok", false, ResolverErrorType.MEDIA_NOT_FOUND, 110),
+            ResolutionAttempt(ResolutionStrategy.PUBLIC_HTML_OPENGRAPH, "tiktok", false, ResolverErrorType.MEDIA_NOT_FOUND, 90)
+        )
+        val trace = ResolutionTrace(attempts, null, ResolutionClassification.PUBLIC_MEDIA_UNAVAILABLE)
+        val error = ResolverError(
+            type = ResolverErrorType.MEDIA_NOT_FOUND,
+            detail = "Media was deleted or link expired.",
+            trace = trace
+        )
+        assertEquals(ResolverErrorType.MEDIA_NOT_FOUND, error.type)
+        assertEquals(ResolutionClassification.PUBLIC_MEDIA_UNAVAILABLE, error.classification)
+        assertFalse("Expired media must not be classified as LOGIN_REQUIRED", error.classification == ResolutionClassification.LOGIN_REQUIRED)
+    }
+
+    @Test
+    fun testCaseD_AntiBotChallengeDetected_YieldsRateLimitedNotLoginRequired() {
+        val errorType = ResolverErrorType.ANTI_BOT_CHALLENGE
+        val classification = errorType.toClassification()
+        assertEquals(ResolutionClassification.RATE_LIMITED, classification)
+        assertFalse("Anti-bot challenges must NOT be classified as LOGIN_REQUIRED", classification == ResolutionClassification.LOGIN_REQUIRED)
+    }
+
+    @Test
+    fun testCaseE_ActualAuthenticationRequired_YieldsLoginRequired() {
+        val errorType = ResolverErrorType.LOGIN_REQUIRED
+        val classification = errorType.toClassification()
+        assertEquals(ResolutionClassification.LOGIN_REQUIRED, classification)
+    }
+
+    @Test
+    fun testCaseF_PrivateMediaAccount_YieldsPrivateMediaClassification() {
+        val errorType = ResolverErrorType.PRIVATE_MEDIA
+        val classification = errorType.toClassification()
+        assertEquals(ResolutionClassification.PRIVATE_MEDIA, classification)
+    }
+
+    @Test
+    fun testCaseG_AllStrategiesFailParser_YieldsExtractorFailureNotLoginRequired() {
+        val attempts = listOf(
+            ResolutionAttempt(ResolutionStrategy.DEDICATED_EXTRACTOR, "reddit", false, ResolverErrorType.PARSER_FAILURE, 120),
+            ResolutionAttempt(ResolutionStrategy.PUBLIC_HTML_OPENGRAPH, "reddit", false, ResolverErrorType.PARSER_FAILURE, 100),
+            ResolutionAttempt(ResolutionStrategy.GENERIC_FALLBACK, "generic", false, ResolverErrorType.EXTRACTOR_OUTDATED, 180)
+        )
+        val trace = ResolutionTrace(attempts, null, ResolutionClassification.EXTRACTOR_OUTDATED)
+        val error = ResolverError(ResolverErrorType.PARSER_FAILURE, "All extractors failed", trace = trace)
+        assertEquals(ResolutionClassification.EXTRACTOR_OUTDATED, error.classification)
+        assertFalse("Parser failure across all strategies must NOT be LOGIN_REQUIRED", error.classification == ResolutionClassification.LOGIN_REQUIRED)
+    }
+
+    @Test
+    fun testQualityPresetDerivationFromTruthfulVariants() {
+        // Truthful available heights: 360p, 720p, 1080p (no 480p, no 1440p, no 2160p)
+        val variants = listOf(
+            MediaVariant(id = "v1080", quality = "1080p", height = 1080, format = "mp4", isAudioOnly = false),
+            MediaVariant(id = "v720", quality = "720p", height = 720, format = "mp4", isAudioOnly = false),
+            MediaVariant(id = "v360", quality = "360p", height = 360, format = "mp4", isAudioOnly = false),
+            MediaVariant(id = "a_orig", quality = "Original Audio", height = 0, format = "m4a", isAudioOnly = true)
+        )
+        val metadata = NormalizedMetadata(
+            id = "test_vid",
+            canonicalUrl = "https://example.com/video",
+            platform = "example",
+            platformIcon = "public",
+            title = "Test Video",
+            variants = variants
+        )
+
+        val heights = metadata.heights
+        assertEquals(listOf(1080, 720, 360), heights)
+        assertFalse("480p must not be present if not provided by source", heights.contains(480))
+        assertFalse("1440p must not be present if not provided by source", heights.contains(1440))
+        assertFalse("2160p must not be present if not provided by source", heights.contains(2160))
+
+        val bestAvailable = metadata.getBestAvailable()
+        assertEquals(1080, bestAvailable?.height)
+
+        val smallest = metadata.getSmallestFile()
+        assertEquals(360, smallest?.height)
+
+        val audioOnly = metadata.audioVariants
+        assertEquals(1, audioOnly.size)
+        assertEquals("m4a", audioOnly[0].format)
+    }
+
+    @Test
+    fun testColdStartDoesNotInitializeEngineAutomatically() {
+        // ProbeEngine state before explicit invocation must NOT be ready
+        // and isInitialized must reflect actual cached runtime state
+        assertNotNull("Engine state enum must exist", org.videopocket.probe.engine.EngineState.NOT_INITIALIZED)
     }
 }

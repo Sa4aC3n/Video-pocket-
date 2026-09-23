@@ -2,23 +2,26 @@
 
 This document specifies the capabilities, validation status, engine dependencies, and fallback behaviors for all supported media providers in Video Pocket.
 
-| Provider Name | Provider ID | Registered | Contract Tested | Live Resolution | E2E Download | Clip | Last Live Test | Final Status | Fallback Behavior |
+> **Environment Notice:** Testing conducted in Linux x86_64 host container environment with local JVM / Robolectric.  
+> **Physical Device Status:** PHYSICAL DEVICE VALIDATION: NOT EXECUTED.
+
+| Provider Name | Provider ID | Registered | Contract Tested | Live Resolution | E2E Download | Clip | Last Test | Final Classification | Fallback Behavior |
 |---|---|---|---|---|---|---|---|---|---|
-| **TikTok** | `tiktok` | Yes | Yes | BLOCKED BY SOURCE | NOT TESTED | NOT TESTED | 2026-09-22 | **TEMPORARILY BROKEN** | Fallback to `generic` on failure |
-| **Instagram** | `instagram` | Yes | Yes | LOGIN REQUIRED | NOT APPLICABLE | NOT APPLICABLE | 2026-09-22 | **DEGRADED** | Fallback to `generic` on failure |
-| **Facebook** | `facebook` | Yes | Yes | BLOCKED BY SOURCE | NOT TESTED | NOT TESTED | 2026-09-22 | **DEGRADED** | Fallback to `generic` on failure |
-| **X / Twitter** | `twitter` | Yes | Yes | PASS | PASS | PASS | 2026-09-22 | **LIVE VERIFIED** | Fallback to `generic` on failure |
-| **Reddit** | `reddit` | Yes | Yes | LOGIN REQUIRED | NOT APPLICABLE | NOT APPLICABLE | 2026-09-22 | **DEGRADED** | Fallback to `generic` on failure |
-| **Vimeo** | `vimeo` | Yes | Yes | LOGIN REQUIRED | NOT APPLICABLE | NOT APPLICABLE | 2026-09-22 | **DEGRADED** | Fallback to `generic` on failure |
-| **Dailymotion** | `dailymotion` | Yes | Yes | PASS | PASS | PASS | 2026-09-22 | **LIVE VERIFIED** | Fallback to `generic` on failure |
-| **Bilibili** | `bilibili` | Yes | Yes | PASS | NOT TESTED | NOT TESTED | 2026-09-22 | **PARTIALLY VERIFIED** | Fallback to `generic` on failure |
-| **SoundCloud** | `soundcloud` | Yes | Yes | BLOCKED BY SOURCE | NOT TESTED | NOT TESTED | 2026-09-22 | **DEGRADED** | Fallback to `generic` on failure |
-| **Tumblr** | `tumblr` | Yes | Yes | BLOCKED BY SOURCE | NOT TESTED | NOT TESTED | 2026-09-22 | **TEMPORARILY BROKEN** | Fallback to `generic` on failure |
-| **Snapchat** | `snapchat` | Yes | Yes | PASS | PASS | NOT TESTED | 2026-09-22 | **LIVE VERIFIED** | Fallback to `generic` on failure |
-| **Pinterest** | `pinterest` | Yes | Yes | PASS | PASS | NOT TESTED | 2026-09-22 | **LIVE VERIFIED** | Fallback to `generic` on failure |
-| **TED** | `ted` | Yes | Yes | FAIL (Extractor bug) | NOT TESTED | NOT TESTED | 2026-09-22 | **TEMPORARILY BROKEN** | Fallback to `generic` on failure |
-| **Twitch** | `twitch` | Yes | Yes | NOT TESTED (Clip 404) | NOT TESTED | NOT TESTED | 2026-09-22 | **CONTRACT ONLY** | Fallback to `generic` on failure |
-| **Universal Web** | `generic` | Yes | Yes | PASS | PASS | PASS | 2026-09-22 | **LIVE VERIFIED** | Terminal fallback |
+| **TikTok** | `tiktok` | Yes | Yes | BLOCKED BY SOURCE | NOT TESTED | NOT TESTED | 2026-09-23 | **BLOCKED BY SOURCE** | Fallback to `generic` on failure |
+| **Instagram** | `instagram` | Yes | Yes | PARTIAL (OpenGraph) | NOT TESTED | NOT TESTED | 2026-09-23 | **DEGRADED** | Fallback to `generic` on failure |
+| **Facebook** | `facebook` | Yes | Yes | BLOCKED BY SOURCE | NOT TESTED | NOT TESTED | 2026-09-23 | **DEGRADED** | Fallback to `generic` on failure |
+| **X / Twitter** | `twitter` | Yes | Yes | PASS | PASS | PASS | 2026-09-23 | **LIVE VERIFIED** | Fallback to `generic` on failure |
+| **Reddit** | `reddit` | Yes | Yes | PASS (Public/JSON) | NOT TESTED | NOT TESTED | 2026-09-23 | **PARTIALLY VERIFIED** | Fallback to `generic` on failure |
+| **Vimeo** | `vimeo` | Yes | Yes | PASS (Public) | NOT TESTED | NOT TESTED | 2026-09-23 | **PARTIALLY VERIFIED** | Fallback to `generic` on failure |
+| **Dailymotion** | `dailymotion` | Yes | Yes | PASS | PASS | PASS | 2026-09-23 | **LIVE VERIFIED** | Fallback to `generic` on failure |
+| **Bilibili** | `bilibili` | Yes | Yes | PASS | NOT TESTED | NOT TESTED | 2026-09-23 | **PARTIALLY VERIFIED** | Fallback to `generic` on failure |
+| **SoundCloud** | `soundcloud` | Yes | Yes | BLOCKED BY SOURCE | NOT TESTED | NOT TESTED | 2026-09-23 | **BLOCKED BY SOURCE** | Fallback to `generic` on failure |
+| **Tumblr** | `tumblr` | Yes | Yes | BLOCKED BY SOURCE | NOT TESTED | NOT TESTED | 2026-09-23 | **BLOCKED BY SOURCE** | Fallback to `generic` on failure |
+| **Snapchat** | `snapchat` | Yes | Yes | PASS | PASS | NOT TESTED | 2026-09-23 | **PARTIALLY VERIFIED** | Fallback to `generic` on failure |
+| **Pinterest** | `pinterest` | Yes | Yes | PASS | PASS | NOT TESTED | 2026-09-23 | **PARTIALLY VERIFIED** | Fallback to `generic` on failure |
+| **TED** | `ted` | Yes | Yes | FAIL (Extractor bug) | NOT TESTED | NOT TESTED | 2026-09-23 | **TEMPORARILY BROKEN** | Fallback to `generic` on failure |
+| **Twitch** | `twitch` | Yes | Yes | NOT TESTED | NOT TESTED | NOT TESTED | 2026-09-23 | **CONTRACT ONLY** | Fallback to `generic` on failure |
+| **Universal Web** | `generic` | Yes | Yes | PASS | PASS | PASS | 2026-09-23 | **LIVE VERIFIED** | Terminal fallback |
 
 ---
 

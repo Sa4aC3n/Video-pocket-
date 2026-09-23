@@ -19,6 +19,13 @@ import org.videopocket.probe.R
 import java.io.File
 import java.util.UUID
 
+enum class EngineState {
+    NOT_INITIALIZED,
+    INITIALIZING,
+    READY,
+    FAILED
+}
+
 interface MediaInspector { fun inspect(url: String): MediaInfo }
 interface MediaDownloader {
     fun download(url: String, info: MediaInfo, action: ProbeAction, height: Int, bitrate: Int, progress: (Float) -> Unit): ProbeResult
@@ -41,43 +48,56 @@ class ProbeEngine(private val context: Context) : MediaInspector, MediaDownloade
     
 
     @Synchronized fun initialize(): JSONObject {
-        cachedInitResult?.let { return it }
+        cachedInitResult?.let {
+            state = EngineState.READY
+            return it
+        }
         return synchronized(initLock) {
-            cachedInitResult?.let { return it }
-            FFmpeg.getInstance().init(context)
-            engine.init(context)
-            val targetFile = File(context.noBackupFilesDir, "youtubedl-android/yt-dlp/yt-dlp")
-            if (!targetFile.exists()) {
-                targetFile.parentFile?.mkdirs()
-                context.resources.openRawResource(R.raw.ytdlp).use { input ->
-                    targetFile.outputStream().use { output ->
-                        input.copyTo(output)
+            cachedInitResult?.let {
+                state = EngineState.READY
+                return it
+            }
+            state = EngineState.INITIALIZING
+            try {
+                FFmpeg.getInstance().init(context)
+                engine.init(context)
+                val targetFile = File(context.noBackupFilesDir, "youtubedl-android/yt-dlp/yt-dlp")
+                if (!targetFile.exists()) {
+                    targetFile.parentFile?.mkdirs()
+                    context.resources.openRawResource(R.raw.ytdlp).use { input ->
+                        targetFile.outputStream().use { output ->
+                            input.copyTo(output)
+                        }
                     }
                 }
-            }
-            for (name in listOf("libpython.so", "libffmpeg.so", "libqjs.so")) {
-                val f = File(context.applicationInfo.nativeLibraryDir, name)
-                if (!f.exists()) throw ProbeFailure(Problem.ENGINE, "Missing native binary: $name in ${context.applicationInfo.nativeLibraryDir}")
-            }
-            workRoot.mkdirs()
-            try {
-                Os.setenv("PYTHONDONTWRITEBYTECODE", "1", true)
-                Os.setenv("PYTHONNOUSERSITE", "1", true)
-                val pythonHome = File(context.noBackupFilesDir, "youtubedl-android/packages/python/usr").absolutePath
-                val pythonLib = File(context.noBackupFilesDir, "youtubedl-android/packages/python/usr/lib/python3.12").absolutePath
-                val sitePackages = File(context.noBackupFilesDir, "youtubedl-android/packages/python/usr/lib/python3.12/site-packages").absolutePath
-                Os.setenv("PYTHONPATH", "$pythonLib:$sitePackages", true)
-                Os.setenv("PYTHONHOME", pythonHome, true)
-            } catch (_: Throwable) {}
+                for (name in listOf("libpython.so", "libffmpeg.so", "libqjs.so")) {
+                    val f = File(context.applicationInfo.nativeLibraryDir, name)
+                    if (!f.exists()) throw ProbeFailure(Problem.ENGINE, "Missing native binary: $name in ${context.applicationInfo.nativeLibraryDir}")
+                }
+                workRoot.mkdirs()
+                try {
+                    Os.setenv("PYTHONDONTWRITEBYTECODE", "1", true)
+                    Os.setenv("PYTHONNOUSERSITE", "1", true)
+                    val pythonHome = File(context.noBackupFilesDir, "youtubedl-android/packages/python/usr").absolutePath
+                    val pythonLib = File(context.noBackupFilesDir, "youtubedl-android/packages/python/usr/lib/python3.12").absolutePath
+                    val sitePackages = File(context.noBackupFilesDir, "youtubedl-android/packages/python/usr/lib/python3.12/site-packages").absolutePath
+                    Os.setenv("PYTHONPATH", "$pythonLib:$sitePackages", true)
+                    Os.setenv("PYTHONHOME", pythonHome, true)
+                } catch (_: Throwable) {}
 
-            val ver = "2026.08.19"
-            val result = JSONObject().put("androidApi", Build.VERSION.SDK_INT)
-                .put("supportedAbis", Build.SUPPORTED_ABIS.joinToString(","))
-                .put("pageSize", Os.sysconf(OsConstants._SC_PAGESIZE))
-                .put("wrapper", "0.18.1").put("ytDlp", ver)
-                .put("quickJsPresent", true)
-            cachedInitResult = result
-            result
+                val ver = "2026.08.19"
+                val result = JSONObject().put("androidApi", Build.VERSION.SDK_INT)
+                    .put("supportedAbis", Build.SUPPORTED_ABIS.joinToString(","))
+                    .put("pageSize", Os.sysconf(OsConstants._SC_PAGESIZE))
+                    .put("wrapper", "0.18.1").put("ytDlp", ver)
+                    .put("quickJsPresent", true)
+                cachedInitResult = result
+                state = EngineState.READY
+                result
+            } catch (t: Throwable) {
+                state = EngineState.FAILED
+                throw t
+            }
         }
     }
 
@@ -129,13 +149,7 @@ class ProbeEngine(private val context: Context) : MediaInspector, MediaDownloade
             return MediaInfo(
                 title = title,
                 duration = json.optDouble("duration").takeIf { it.isFinite() },
-                formats = listOf(
-                    org.videopocket.probe.core.MediaFormat("1080p", "mp4", 1080, video = true, audio = true, bytes = null),
-                    org.videopocket.probe.core.MediaFormat("720p", "mp4", 720, video = true, audio = true, bytes = null),
-                    org.videopocket.probe.core.MediaFormat("480p", "mp4", 480, video = true, audio = true, bytes = null),
-                    org.videopocket.probe.core.MediaFormat("360p", "mp4", 360, video = true, audio = true, bytes = null),
-                    org.videopocket.probe.core.MediaFormat("mp3", "mp3", 0, video = false, audio = true, bytes = null)
-                ),
+                formats = emptyList(),
                 isPlaylist = true,
                 playlistCount = if (entryList.isNotEmpty()) entryList.size else json.optInt("playlist_count", 0),
                 entries = entryList
@@ -433,7 +447,11 @@ class ProbeEngine(private val context: Context) : MediaInspector, MediaDownloade
         @Volatile private var cachedInitResult: JSONObject? = null
         private val initLock = Any()
 
+        @Volatile var state: EngineState = EngineState.NOT_INITIALIZED
+            private set
+
         val isInitialized: Boolean get() = cachedInitResult != null
+        val isReady: Boolean get() = state == EngineState.READY && cachedInitResult != null
         val cachedRuntime: JSONObject? get() = cachedInitResult
 
         fun classify(error: Throwable): Problem {
@@ -442,7 +460,10 @@ class ProbeEngine(private val context: Context) : MediaInspector, MediaDownloade
             return when {
                 "cancel" in message || "interrupt" in message || error is InterruptedException -> Problem.CANCELED
                 "no space" in message -> Problem.SPACE
-                "sign in" in message || "login" in message || "private" in message || "cookies" in message -> Problem.LOGIN_REQUIRED
+                "bot" in message || "captcha" in message || "challenge" in message || "cf-ray" in message || "confirm you're not a bot" in message -> Problem.RESTRICTED
+                "sign in to confirm" in message -> Problem.RESTRICTED
+                "403" in message && ("forbidden" in message || "denied" in message) -> Problem.RESTRICTED
+                ("sign in" in message || "login" in message || "log in" in message || "this account is private" in message) -> Problem.LOGIN_REQUIRED
                 "unsupported url" in message || "requested format" in message -> Problem.UNSUPPORTED
                 "removed" in message || "not found" in message || "404" in message -> Problem.REMOVED
                 "403" in message || "429" in message || "restricted" in message || "rate limit" in message || "too many requests" in message -> Problem.RESTRICTED
